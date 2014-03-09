@@ -12,18 +12,19 @@
 #include "vislib/Vector.h"
 #include "vislib/ShallowVector.h"
 #include "vislib/Quaternion.h"
+
+//std includes
 #include "cmath"
 #include "iostream"
 #include "vector"
 #include <math.h> 
 
 //thrust includes
-#include "thrust\host_vector.h"
-#include "thrust/generate.h"
-#include "thrust/sort.h"
+#include <thrust/host_vector.h>
+#include <thrust/sort.h>
+#include <thrust/generate.h>
 
 // Include GLM
-#include "glm-0.9.4.6\glm\glm\glm.hpp"
 #include "glm-0.9.4.6\glm\glm\glm.hpp"
 #include "glm-0.9.4.6\glm/glm/gtc/matrix_transform.hpp"
 #include "glm-0.9.4.6\glm/glm/gtc/quaternion.hpp"
@@ -31,6 +32,9 @@
 #include "glm-0.9.4.6\glm/glm/gtx/euler_angles.hpp"
 #include "glm-0.9.4.6\glm/glm/gtx/norm.hpp"
 #include "glm-0.9.4.6/glm/glm\gtc\type_ptr.hpp"
+
+//intra project includes
+
 
 using namespace megamol;
 using namespace megamol::core;
@@ -45,19 +49,20 @@ namespace deformables
  */
 const unsigned int SPHSimulation::frameCount = 100;
 
-
+const float SPHSimulation::globalRadius=.01;
 /*
  * SPHSimulation::sphereCount
  */
-const unsigned int SPHSimulation::sphereCount = 250;
+const unsigned int SPHSimulation::sphereCount = 120;
 
 
 /*
  * SPHSimulation::SPHSimulation
  */
-SPHSimulation::SPHSimulation(void) : view::AnimDataModule(), getDataSlot("getData", "Gets the data from the data source") {
+	SPHSimulation::SPHSimulation(void) : view::AnimDataModule(), getDataSlot("getData", "Gets the data from the data source") {
 	SPHSimulation::initData(m,roh,proh,droh,D,d,eta,pos,vel,gradV,acc,pacc,S,gradS,P,gradP,gradW,pie,W);
-    this->getDataSlot.SetCallback(moldyn::MultiParticleDataCall::ClassName(), moldyn::MultiParticleDataCall::FunctionName(0), &SPHSimulation::getDataCallback);
+    cudaTest();
+	this->getDataSlot.SetCallback(moldyn::MultiParticleDataCall::ClassName(), moldyn::MultiParticleDataCall::FunctionName(0), &SPHSimulation::getDataCallback);
     this->getDataSlot.SetCallback(moldyn::MultiParticleDataCall::ClassName(), moldyn::MultiParticleDataCall::FunctionName(1), &SPHSimulation::getExtentCallback);
     this->MakeSlotAvailable(&this->getDataSlot);
 
@@ -171,36 +176,36 @@ void SPHSimulation::release(void) {
 //--------------------------------------------------------------------------------------------------------------------------
 // Global DATA Store for Evaluation Function
 //--------------------------------------------------------------------------------------------------------------------------
-float h=.1f;
-long time;
-float dt=0.001f;
-float vmax=100;//for dt update
-float etaMax=20;//for dt update
-float alpha=0.5;//bulk viscosity
-float epsilon=0.1f;//for velocity correction
-std::vector<float> m;
-std::vector<float> roh;
-std::vector<float> proh;
-float roh0=1;
-float c=300000;// in m/sec
-std::vector<float> droh;
-std::vector<glm::mat3> D;
-std::vector<float> d;
-std::vector<float>eta;
-float n=0.5f;
-float jn;
-std::vector<glm::vec3> pos;
-std::vector<glm::vec3> vel;
-std::vector<glm::mat3> gradV;
-std::vector<glm::vec3> acc;
-std::vector<glm::vec3> pacc;
-std::vector<glm::mat3> S;
-std::vector<glm::vec3> gradS;
-std::vector<float> P;
-std::vector<glm::vec3> gradP;
-std::vector<glm::vec3> gradW;
-std::vector<glm::vec3> pie;
-std::vector<float> W;
+		float h=10*SPHSimulation::globalRadius;
+		long time;
+		float dt=0.001f;
+		float vmax=100;//for dt update
+		float etaMax=20;//for dt update
+		float alpha=0.5;//bulk viscosity
+		float epsilon=0.1f;//for velocity correction
+		std::vector<float> m;
+		std::vector<float> roh;
+		std::vector<float> proh;
+		float roh0=1;
+		float c=300000;// in m/sec
+		std::vector<float> droh;
+		std::vector<glm::mat3> D;
+		std::vector<float> d;
+		std::vector<float>eta;
+		float n=0.5f;
+		float jn;
+		std::vector<glm::vec3> pos;
+		std::vector<glm::vec3> vel;
+		std::vector<glm::mat3> gradV;
+		std::vector<glm::vec3> acc;
+		std::vector<glm::vec3> pacc;
+		std::vector<glm::mat3> S;
+		std::vector<glm::vec3> gradS;
+		std::vector<float> P;
+		std::vector<glm::vec3> gradP;
+		std::vector<glm::vec3> gradW;
+		std::vector<glm::vec3> pie;
+		std::vector<float> W;
 
 //--------------------------------------------------------------------------------------------------------------------------
 //--------------------------------------------------------------------------------------------------------------------------
@@ -218,7 +223,7 @@ void SPHSimulation::initData(std::vector<float> &m,std::vector<float> &roh,std::
 	glm::mat3 zero(z,z,z);
 	
 	float ze=0.0f;
-	for(int i = 0;i<250;i++){
+	for(int i = 0;i<SPHSimulation::sphereCount;i++){
 		m.push_back(ze);
 		roh.push_back(ze);
 		proh.push_back(ze);
@@ -239,19 +244,21 @@ void SPHSimulation::initData(std::vector<float> &m,std::vector<float> &roh,std::
 		eta.push_back(ze);
 		pos.push_back(z);
 	}
-	float a=0;float b=0;float c=1;
-	for(int i = 0;i<250;i++)
+	float a=-0.3;float b=-.15;float c=.5;
+	for(int i = 0;i<SPHSimulation::sphereCount;i++)
 	{
 		pos[i].x=a;
 		pos[i].y=b;
 		pos[i].z=c;
 		a+=.01;
-		b+=.04;
-		c-=.05;
+		b+=.008;
+		c-=.008;
+		if(i%30==0){
+			a+=.0005;b=-.5;c=.5;}
 	}
 
+	initializeGPU(); 
 }
-
 bool SPHSimulation::getDataCallback(Call& caller) {
     moldyn::MultiParticleDataCall *mpdc = dynamic_cast<moldyn::MultiParticleDataCall *>(&caller);
     if (mpdc == NULL) return false;
@@ -262,12 +269,13 @@ bool SPHSimulation::getDataCallback(Call& caller) {
     Frame *frm = dynamic_cast<Frame*>(f);
     if (frm == NULL) return false;
 
+
+
 	//--------------------------------------------------------------------------------------------------------------------------
 					// update-data using sph formulation.
 	//--------------------------------------------------------------------------------------------------------------------------
 	
-	//cudaTest();
-	
+
 	//See equations from Paper : Particle based viscoplastic fluid / solid simulation  Afonso Pavia et. al 
 	for(int i = 0;i<m.size();i++){
 
@@ -326,6 +334,7 @@ bool SPHSimulation::getDataCallback(Call& caller) {
         -1.0f, -1.0f, -1.0f,
         1.0f, 1.0f, 1.0f);
     mpdc->SetParticleListCount(1);
+	mpdc->AccessParticles(0).SetGlobalRadius(SPHSimulation::globalRadius);
     mpdc->AccessParticles(0).SetCount(SPHSimulation::sphereCount);
 	mpdc->AccessParticles(0).SetVertexData(moldyn::SimpleSphericalParticles::VERTDATA_FLOAT_XYZ, pos.data(), sizeof(float) * 3);
     mpdc->AccessParticles(0).SetColourData(moldyn::SimpleSphericalParticles::COLDATA_FLOAT_RGB, frm->data + 4, sizeof(float) * 7);
@@ -611,13 +620,17 @@ void SPHSimulation::cudaTest(){
 	
   
    
-	thrust::host_vector<int> h_vec(32<<20);
-	thrust::generate(h_vec.begin(), h_vec.end(), rand);
-	
+	//thrust::host_vector<int> h_vec(32<<20);
+	//thrust::generate(h_vec.begin(), h_vec.end(), rand);
+	const int N = 6;
+	int A[N] = {1, 4, 2, 8, 5, 7};
+
+
     // interface to CUDA code
     
 	std::cout<<"$$$$$$$$$$$$$$$$$$$=========CUDA TESTING======$$$$$$$$$$$$$$$$$$$$$$$$$"<<std::endl;
-	thrust::sort_on_device(h_vec);
+	//thrust::sort_on_device(h_vec);
+	thrust::sort(A, A + N);
 	std::cout<<"$$$$$$$$$$$$$$$$$$$=======Done  sorting=======$$$$$$$$$$$$$$$$$$$$$$$$$"<<std::endl;
     
 	

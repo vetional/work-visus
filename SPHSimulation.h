@@ -24,6 +24,12 @@
 #include "glm-0.9.4.6\glm/glm/gtx/euler_angles.hpp"
 #include "glm-0.9.4.6\glm/glm/gtx/norm.hpp"
 
+#include "InitGPU.cuh"
+
+#include <thrust/device_vector.h>
+#include <thrust/copy.h>
+#include <thrust/version.h>
+
 using namespace megamol;
 using namespace megamol::core;
 
@@ -34,7 +40,7 @@ namespace deformables {
     /**
      * Test data source module providing generated spheres data
      */
-    class SPHSimulation : public view::AnimDataModule {
+	class SPHSimulation : public view::AnimDataModule ,public  GPUimplementation{
     public:
 
         /**
@@ -70,30 +76,30 @@ namespace deformables {
         /** Dtor. */
         virtual ~SPHSimulation(void);
 		
-long time;
+		long time;
+		static const float globalRadius;
+		std::vector<float> m;
+		std::vector<float> roh;
+		std::vector<float> proh;
 
-std::vector<float> m;
-std::vector<float> roh;
-std::vector<float> proh;
+		std::vector<float> droh;
+		std::vector<glm::mat3> D;
+		std::vector<float> d;
+		std::vector<float>eta;
 
-std::vector<float> droh;
-std::vector<glm::mat3> D;
-std::vector<float> d;
-std::vector<float>eta;
-
-float jn;
-std::vector<glm::vec3> pos;
-std::vector<glm::vec3> vel;
-std::vector<glm::mat3> gradV;
-std::vector<glm::vec3> acc;
-std::vector<glm::vec3> pacc;
-std::vector<glm::mat3> S;
-std::vector<glm::vec3> gradS;
-std::vector<float> P;
-std::vector<glm::vec3> gradP;
-std::vector<glm::vec3> gradW;
-std::vector<glm::vec3> pie;
-std::vector<float> W;
+		float jn;
+		std::vector<glm::vec3> pos;
+		std::vector<glm::vec3> vel;
+		std::vector<glm::mat3> gradV;
+		std::vector<glm::vec3> acc;
+		std::vector<glm::vec3> pacc;
+		std::vector<glm::mat3> S;
+		std::vector<glm::vec3> gradS;
+		std::vector<float> P;
+		std::vector<glm::vec3> gradP;
+		std::vector<glm::vec3> gradW;
+		std::vector<glm::vec3> pie;
+		std::vector<float> W;
 
 		void SPHSimulation::initData(std::vector<float> &m,std::vector<float> &roh,std::vector<float> &proh,
 							 std::vector<float> &droh,std::vector<glm::mat3> &D,std::vector<float> &d,
@@ -103,6 +109,7 @@ std::vector<float> W;
 							 std::vector<glm::vec3> &gradS,std::vector<float> &P,
 							 std::vector<glm::vec3> &gradP,std::vector<glm::vec3> &gradW,
 							 std::vector<glm::vec3> &pie,std::vector<float> &W);
+
 		void SPHSimulation::updategradV(std::vector<float> &m,std::vector<float> &roh,
 				 std::vector<glm::vec3> &vel,std::vector<glm::mat3> &gradV,
 				 std::vector<float> &gradW, int index,std::vector<int> &nxi);
@@ -216,7 +223,7 @@ std::vector<float> W;
          * @return 'true' on success, 'false' on failure.
          */
         bool getExtentCallback(Call& caller);
-
+		
     private:
 
         /** Number of frames to be generated */
@@ -224,11 +231,12 @@ std::vector<float> W;
 
         /** Number of spheres to be generated */
         static const unsigned int sphereCount;
-
+		// global radius of particles;
+		
         /**
          * Class storing data of a single frame
          */
-        class Frame : public view::AnimDataModule::Frame {
+        class Frame : public view::AnimDataModule::Frame{
         public:
 
             /**
@@ -265,6 +273,9 @@ std::vector<float> W;
         CalleeSlot getDataSlot;
 
     };
+
+
+
 
 } /* end namespace deformables */
 } /* end namespace megamol */
