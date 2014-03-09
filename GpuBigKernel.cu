@@ -7,46 +7,51 @@ void   initializeGPU(){
 	int num_devices, device;
 	cudaGetDeviceCount(&num_devices);
 	if (num_devices > 1) {
-      int max_multiprocessors = 0, max_device = 0;
-	   std::cout << "Deformable module for MEGAMOL" << std::endl << "=========" << std::endl << std::endl;
+    	         
+    	        int max_multiprocessors = 0, max_device = 0;
+		std::cout << "Deformable module for MEGAMOL" << std::endl << "=========" << std::endl << std::endl;
 
-    std::cout << "CUDA version:   v" << CUDART_VERSION << std::endl;    
-   std::cout << "Thrust version: v" << THRUST_MAJOR_VERSION << "." << THRUST_MINOR_VERSION << std::endl << std::endl; 
+    		std::cout << "CUDA version:   v" << CUDART_VERSION << std::endl;    
+   		std::cout << "Thrust version: v" << THRUST_MAJOR_VERSION << "." << THRUST_MINOR_VERSION << std::endl << std::endl; 
 
-	  std::cout<<"CUDA Devices: " << std::endl << std::endl;
-      for (device = 0; device < num_devices; device++) {
-              cudaDeviceProp props;
-              cudaGetDeviceProperties(&props, device);
-			  std::cout << device << ": " << props.name << ": " << props.major << "." << props.minor << std::endl;
-						std::cout << "  Global memory:   " << props.totalGlobalMem / mb << "mb" << std::endl;
-						std::cout << "  Shared memory:   " << props.sharedMemPerBlock / kb << "kb" << std::endl;
-						std::cout << "  Constant memory: " << props.totalConstMem / kb << "kb" << std::endl;
-						std::cout << "  Block registers: " << props.regsPerBlock << std::endl << std::endl;
-						std::cout << "  Warp size:         " << props.warpSize << std::endl;
-						std::cout << "  Threads per block: " << props.maxThreadsPerBlock << std::endl;
-						std::cout << "  Max block dimensions: [ " << props.maxThreadsDim[0] << ", " << props.maxThreadsDim[1]  << ", " << props.maxThreadsDim[2] << " ]" << std::endl;
-						std::cout << "  Max grid dimensions:  [ " << props.maxGridSize[0] << ", " << props.maxGridSize[1]  << ", " << props.maxGridSize[2] << " ]" << std::endl;
-						std::cout << std::endl;
-              if (max_multiprocessors < props.multiProcessorCount) {
-                      max_multiprocessors = props.multiProcessorCount;
-                      max_device = device;
+	  	std::cout<<"CUDA Devices: " << std::endl << std::endl;
+      
+      	for (device = 0; device < num_devices; device++) {
+        
+	  cudaDeviceProp props;
+	  cudaGetDeviceProperties(&props, device);
+	
+	  std::cout << device << ": " << props.name << ": " << props.major << "." << props.minor << std::endl;
+	  std::cout << "  Global memory:   " << props.totalGlobalMem / mb << "mb" << std::endl;
+	  std::cout << "  Shared memory:   " << props.sharedMemPerBlock / kb << "kb" << std::endl;
+	  std::cout << "  Constant memory: " << props.totalConstMem / kb << "kb" << std::endl;
+	  std::cout << "  Block registers: " << props.regsPerBlock << std::endl << std::endl;
+   	  std::cout << "  Warp size:         " << props.warpSize << std::endl;
+	  std::cout << "  Threads per block: " << props.maxThreadsPerBlock << std::endl;
+	  std::cout << "  Max block dimensions: [ " << props.maxThreadsDim[0] << ", " << props.maxThreadsDim[1]  << ", " << props.maxThreadsDim[2] << " ]" << std::endl;
+	  std::cout << "  Max grid dimensions:  [ " << props.maxGridSize[0] << ", " << props.maxGridSize[1]  << ", " << props.maxGridSize[2] << " ]" << std::endl;
+	  std::cout << std::endl;
+        
+           if (max_multiprocessors < props.multiProcessorCount) {
+           
+                   max_multiprocessors = props.multiProcessorCount;
+                   max_device = device;
 					  
-              }
+           }
       }
+      
       cudaSetDevice(max_device);
-	  std::cout<<"Selected Device"<<max_device<<std::endl;
+      std::cout<<"Selected Device"<<max_device<<std::endl;
 
-	}
+     }
 }
-void theBigLoop1(std::vector<float> &m,std::vector<float> &roh,std::vector<float> &proh,
-							 std::vector<float> &droh,std::vector<glm::mat3> &D,std::vector<float> &d,
-							 std::vector<float>&eta,std::vector<glm::vec3> &pos,
-							 std::vector<glm::vec3> &vel,
-							 std::vector<glm::mat3> &gradV,std::vector<glm::vec3> &acc,
-							 std::vector<glm::vec3> &pacc,std::vector<glm::mat3> &S,
-							 std::vector<glm::vec3> &gradS,std::vector<float> &P,
-							 std::vector<glm::vec3> &gradP,std::vector<glm::vec3> &gradW,
-							 std::vector<glm::vec3> &pie,std::vector<float> &W){
+void theBigLoop1(std::vector<float> &m,std::vector<float> &roh,
+		std::vector<float> &proh,std::vector<float> &droh,std::vector<glm::mat3> &D,
+		std::vector<float> &d,std::vector<float>&eta,std::vector<glm::vec3> &pos,
+		std::vector<glm::vec3> &vel, std::vector<glm::mat3> &gradV,std::vector<glm::vec3> &acc,
+		std::vector<glm::vec3> &pacc,std::vector<glm::mat3> &S,std::vector<glm::vec3> &gradS,
+		std::vector<float> &P, std::vector<glm::vec3> &gradP,std::vector<glm::vec3> &gradW,
+		std::vector<glm::vec3> &pie,std::vector<float> &W){
 
 
 //streams can be used to copy multiple data structures to the device memeory.
@@ -182,25 +187,54 @@ __global__ void computeTheBigLoop(std::vector<float> &m,std::vector<float> &d_ro
 				 std::vector<glm::vec3> &d_gradP,std::vector<glm::vec3> &d_gradW,
 				 std::vector<glm::vec3> &d_pie,std::vector<float> &d_W){
 
-	dim3 i= blockIdx.x*blockDim.x+threadIdx.x;
+	dim3 index= blockIdx.x*blockDim.x+threadIdx.x;
   
   	//call other kernels for this one
   	// a kernel will be spawned for each of the material points.
   	
   	
-  	std::vector<glm::vec3> d_nxi;
-  	float d_h;
+  	std::vector<glm::vec3> nxi;
   	
-	int threadsPerBlock=32;
-	int blocksPerGrid=(m.size()/threadsPerBlock) +1;
+  	
+  	// if using dynamic programming then use the following 
+	//int threadsPerBlock=32;
+	//int blocksPerGrid=(m.size()/threadsPerBlock) +1;
+	//computeFindNeighbours<<<blocksPerGrid,threadsPerBloack>>>(i,d_pos,d_nxi,d_h);
 
+	for(int i =0; i <pos.size();i++){
+		
+		if(glm::distance(pos[index],pos[i])<2*h){
 
-	computeFindNeighbours<<<blocksPerGrid,threadsPerBloack>>>(i,d_pos,d_nxi,d_h);
+			if(index!=i){
+			
+				nxi.push_back(i);
+			
+			}
+	
+	
+		}	
 
-  
+	}
+	
+	
+	for(int j=0;j<nxi.size();j++)
+	{
+		//Calculating W and  gradW
+		d_W[j]=((315/208)*3.14*h*h*h)* w(glm::distance(d_pos[i],d_pos[nxi[j]])/h);	
+		float dXiXj=glm::distance(d_pos[i],d_pos[nxi[j]]);
+		float multiplier=-(9/(4*h))+(19/(8*h*h))*dXiXj+(5/(8*h*h*h))*dXiXj;
+		d_gradW[j].x= multiplier*d_pos[i].x-d_pos[nxi[j]].x;
+		d_gradW[j].y= multiplier*d_pos[i].y-d_pos[nxi[j]].y;
+		d_gradW[j].z= multiplier*d_pos[i].y-d_pos[nxi[j]].z;
+		
+		//calculating gradV
+		glm::vec3 v=(d_m[nxi[j]]/d_roh[nxi[j]])*(d_vel[nxi[j]]-d_vel[index]);
+		d_gradV[index]=glm::outerProduct(v,d_gradW[j]);
+	}
+	  
 }
 __global__ void computeFindNeighbours(int index, std::vector<glm::vec3> &pos, 
-						std::vector<glm::vec3> &nxi,float h)){
+						std::vector<glm::vec3> &nxi)){
 
 	
 	dim3 i= blockIdx.x*blockDim.x+threadIdx.x;
