@@ -242,14 +242,70 @@ __global__ void computeTheBigLoop(std::vector<float> &m,std::vector<float> &d_ro
 		float sum=0;
 		sum+=d_m[nxi[j]]*d_W[j];
 	}
+	
 	//calculating the density roh
-		d_proh[index]=d_roh[index];
-		d_roh[index]=sum;
+	d_proh[index]=d_roh[index];
+	d_roh[index]=sum;
 		
-		//calculating pressure 
-		d_P[index]=c*c*(d_roh[index]-roh0);
+	//calculating pressure 
+	d_P[index]=c*c*(d_roh[index]-roh0);
 	  
-	  
+	glm::mat3 D11= 0.5*d_D[index];
+
+	//compute the d from the current rate of deformation tensor 
+	float d1=std::sqrt(D11[0][0]+D11[1][1]+D11[2][2]);
+
+	float exp=std::exp(-d1*(jn+1));
+	// since we have fixed n to be .5 other wise use the commented version.
+	d_eta[index]=(1-exp)*((1/d1)*(1/d1));
+	//eta[index]=(1-exp)*(std::pow(d1,n-1)*(1/d1));
+
+	d_S[index]=d_eta[index]*d_D[index];
+	
+	glm::vec3 sumGP(0.0f,0.0f,0.0f);
+	float ptemp;
+
+	glm::vec3 sumPI(0.0f,0.0f,0.0f);
+	glm::vec3 sumGS(0.0f,0.0f,0.0f);
+	for(int j=0;j<nxi.size();j++)
+	{
+
+		if(glm::dot((d_vel[index]-d_vel[nxi[j]]),(d_pos[index]-d_pos[nxi[j]]))<0)
+		{
+			float dist=glm::distance(d_pos[index],d_pos[nxi[j]]);
+			float mu=h*glm::dot((d_vel[index]-d_vel[nxi[j]]),(d_pos[index]-d_pos[nxi[j]]))/(dist*dist+0.01*h*h);
+			sumPI+=d_m[nxi[j]]*((2*alpha*c*(h*mu))/(d_roh[index]+d_roh[j]))*d_gradW[j];
+		}
+		else
+			sumPI+=0;
+			
+		
+		//using the formulation in paper.
+		glm::mat3 sv=(d_m[nxi[j]]/(d_roh[nxi[j]]*d_roh[index]))*(d_S[nxi[j]]+d_S[index]);
+		sumGS+=sv*d_gradW[j];	
+		
+		
+		ptemp=(d_m[nxi[j]])*((d_P[nxi[j]]/std::pow(d_roh[nxi[j]],2))+d_P[index]/std::pow(d_roh[index],2));
+		sumGP+=ptemp*d_gradW[j];
+
+	}
+	d_gradP[index]=sumGP;
+	d_gradS[index]=sumGS;
+	d_pie[index]=sumPI;
+
+
+
+}
+
+void SPHSimulation::updateS(std::vector<float> &eta,std::vector<glm::mat3>D,
+	std::vector<glm::mat3>&S){
+
+
+	for(int i=0;i<D.size();i++){
+
+		S[i]=eta[i]*D[i];
+
+
 }
 
 
