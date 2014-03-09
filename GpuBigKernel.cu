@@ -164,12 +164,23 @@ void theBigLoop1(std::vector<float> &m,std::vector<float> &roh,std::vector<float
 		int blocksPerGrid=(m.size()/threadsPerBlock) +1;
 
 
-		computeTheBigLoop<<<blocksPerGrid,threadsPerBloack>>>();
+		computeTheBigLoop<<<blocksPerGrid,threadsPerBloack>>>(std::vector<float> d_m,d_roh,d_proh,d_droh,
+				 d_D, d_d,d_eta,d_pos,d_vel,d_gradV,d_acc,d_pacc,d_S, d_gradS,d_P, d_gradP,
+				 d_gradW,d_pie,d_W;);
 
 
 }
 
-__global__ void computeTheBigLoop(){
+__global__ void computeTheBigLoop(std::vector<float> &m,std::vector<float> &d_roh,std::vector<float> &d_proh,
+				 std::vector<float> &d_droh,std::vector<glm::mat3> &d_D,
+				 std::vector<float> &d_d,
+				 std::vector<float>&d_eta,std::vector<glm::vec3> &d_pos,
+				 std::vector<glm::vec3> &d_vel,
+				 std::vector<glm::mat3> &d_gradV,std::vector<glm::vec3> &d_acc,
+				 std::vector<glm::vec3> &d_pacc,std::vector<glm::mat3> &d_S,
+				 std::vector<glm::vec3> &d_gradS,std::vector<float> &d_P,
+				 std::vector<glm::vec3> &d_gradP,std::vector<glm::vec3> &d_gradW,
+				 std::vector<glm::vec3> &d_pie,std::vector<float> &d_W){
 
 	dim3 i= blockIdx.x*blockDim.x+threadIdx.x;
   
@@ -177,12 +188,35 @@ __global__ void computeTheBigLoop(){
   	// a kernel will be spawned for each of the material points.
   	
   	
+  	std::vector<glm::vec3> d_nxi;
+  	float d_h;
+  	
+	int threadsPerBlock=32;
+	int blocksPerGrid=(m.size()/threadsPerBlock) +1;
+
+
+	computeFindNeighbours<<<blocksPerGrid,threadsPerBloack>>>(i,d_pos,d_nxi,d_h);
 
   
 }
-__global__ void computeFindNeighbours((i,pos,nxi,h)){
+__global__ void computeFindNeighbours(int index, std::vector<glm::vec3> &pos, 
+						std::vector<glm::vec3> &nxi,float h)){
 
+	
+	dim3 i= blockIdx.x*blockDim.x+threadIdx.x;
+
+	if(glm::distance(pos[index],pos[i])<2*h){
+
+		if(index!=i){
+		
+			nxi.push_back(i);
+			
+		}
+	
+	
+	}
 }
+	
 
 
 
