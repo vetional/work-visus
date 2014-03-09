@@ -1,4 +1,3 @@
-
 #include "GpuBigKernel.h"
 
 
@@ -174,6 +173,10 @@ __global__ void computeTheBigLoop(){
 
 	dim3 i= blockIdx.x*blockDim.x+threadIdx.x;
   
+  	//call other kernels for this one
+  	// a kernel will be spawned for each of the material points.
+  	
+  	
 
   
 }
