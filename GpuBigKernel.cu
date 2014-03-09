@@ -230,9 +230,35 @@ __global__ void computeTheBigLoop(std::vector<float> &m,std::vector<float> &d_ro
 		//calculating gradV
 		glm::vec3 v=(d_m[nxi[j]]/d_roh[nxi[j]])*(d_vel[nxi[j]]-d_vel[index]);
 		d_gradV[index]=glm::outerProduct(v,d_gradW[j]);
+	
+		d_D[index]=d_gradV[index]+glm::transpose(d_gradV[index]);
+
+		for(int i=0;i<d_D.size();i++){
+			glm::mat3 D1= 0.5*d_D[i];
+			d_droh[i] = D1[0][0]+D1[1][1]+D1[2][2];
+
+		}
+		//used to calculate density outside the loop
+		float sum=0;
+		sum+=d_m[nxi[j]]*d_W[j];
 	}
+	//calculating the density roh
+		d_proh[index]=d_roh[index];
+		d_roh[index]=sum;
+		
+		//calculating pressure 
+		d_P[index]=c*c*(d_roh[index]-roh0);
+	  
 	  
 }
+
+
+
+
+
+
+
+
 __global__ void computeFindNeighbours(int index, std::vector<glm::vec3> &pos, 
 						std::vector<glm::vec3> &nxi)){
 
