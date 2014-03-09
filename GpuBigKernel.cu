@@ -180,3 +180,64 @@ __global__ void computeTheBigLoop(){
 
   
 }
+__global__ void computeFindNeighbours((i,pos,nxi,h)){
+
+}
+
+
+
+__global__ void calcGradW(W,gradW,pos,i,nxi){
+
+}
+__global__ void updategradV(m,roh,vel,gradV,gradW,i,nxi){
+
+
+}
+
+__global__ void updateD(gradV,D,i){
+
+
+}
+
+__global__ void updateDDE(D,droh)//see equaqtion 10
+{
+
+
+}
+
+__global__ void compute_roh(roh,proh,m,W,i,nxi){
+
+}
+
+__global__ void updateP(P,roh0,roh,c)
+//see equaqtion 6
+{
+
+
+}
+
+
+__global__ void updateEta(eta,D,jn,n)
+//see equaqtion 4
+{
+
+}
+
+__global__ void updateS(eta,D,S){
+
+
+}
+
+//for artificial viscosity equation 12
+__global__ void compute_pi(m,roh,pie,h,gradW,i,nxi,vel,pos,alpha,c){
+
+}
+
+// to update acceleration we need to calculate grad p and grad s
+__global__ void compute_gradS(roh,S,gradW,i,m,gradS,nxi){
+
+}
+__global__ void compute_gradP(m,roh,P,gradW,gradP,i,nxi){
+
+
+}
