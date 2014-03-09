@@ -34,7 +34,7 @@
 #include "glm-0.9.4.6/glm/glm\gtc\type_ptr.hpp"
 
 //intra project includes
-
+#include <constants.h>
 
 using namespace megamol;
 using namespace megamol::core;
@@ -176,23 +176,14 @@ void SPHSimulation::release(void) {
 //--------------------------------------------------------------------------------------------------------------------------
 // Global DATA Store for Evaluation Function
 //--------------------------------------------------------------------------------------------------------------------------
-		float h=10*SPHSimulation::globalRadius;
 		long time;
-		float dt=0.001f;
-		float vmax=100;//for dt update
-		float etaMax=20;//for dt update
-		float alpha=0.5;//bulk viscosity
-		float epsilon=0.1f;//for velocity correction
 		std::vector<float> m;
 		std::vector<float> roh;
 		std::vector<float> proh;
-		float roh0=1;
-		float c=300000;// in m/sec
 		std::vector<float> droh;
 		std::vector<glm::mat3> D;
 		std::vector<float> d;
 		std::vector<float>eta;
-		float n=0.5f;
 		float jn;
 		std::vector<glm::vec3> pos;
 		std::vector<glm::vec3> vel;
