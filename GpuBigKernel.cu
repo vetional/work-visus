@@ -1,5 +1,4 @@
 
-
 #include "GpuBigKernel.h"
 
 
@@ -96,6 +95,71 @@ void theBigLoop1(std::vector<float> &m,std::vector<float> &roh,std::vector<float
 		cudaMalloc(&d_proh,sizeof(proh));
 		cudaMemcpy(d_proh, proh, sizeof(proh), cudaMemcpyHostToDevice);
 		//cudaMemcpyAsync(d_out_elemInfo, out_elemInfo, sizeof(out_elemInfo), cudaMemcpyHostToDevice, s3);
+		
+		
+		cudaMalloc(&d_droh,sizeof(droh));
+		cudaMemcpy(d_droh, droh, sizeof(droh), cudaMemcpyHostToDevice);
+		
+		
+		cudaMalloc(&d_D,sizeof(D));
+		cudaMemcpy(d_D, D, sizeof(D), cudaMemcpyHostToDevice);
+		
+		
+		cudaMalloc(&d_d,sizeof(d));
+		cudaMemcpy(d_d, d, sizeof(d), cudaMemcpyHostToDevice);
+		
+		
+		cudaMalloc(&d_eta,sizeof(eta));
+		cudaMemcpy(d_eta, eta, sizeof(eta), cudaMemcpyHostToDevice);
+		
+		cudaMalloc(&d_pos,sizeof(pos));
+		cudaMemcpy(d_pos, pos, sizeof(pos), cudaMemcpyHostToDevice);
+		
+		
+		cudaMalloc(&d_vel,sizeof(vel));
+		cudaMemcpy(d_vel, vel, sizeof(vel), cudaMemcpyHostToDevice);
+		
+		
+		
+		cudaMalloc(&d_gradV,sizeof(gradV));
+		cudaMemcpy(d_gradV, gradV, sizeof(gradV), cudaMemcpyHostToDevice);
+		
+		
+		cudaMalloc(&d_acc,sizeof(acc));
+		cudaMemcpy(d_acc, acc, sizeof(acc), cudaMemcpyHostToDevice);
+		
+		cudaMalloc(&d_pacc,sizeof(pacc));
+		cudaMemcpy(d_pacc, pacc, sizeof(pacc), cudaMemcpyHostToDevice);
+		
+		
+		cudaMalloc(&d_S,sizeof(S));
+		cudaMemcpy(d_S, S, sizeof(S), cudaMemcpyHostToDevice);
+		
+		
+		cudaMalloc(&d_gradS,sizeof(gradS));
+		cudaMemcpy(d_gradS, gradS, sizeof(gradS), cudaMemcpyHostToDevice);
+		
+		
+		cudaMalloc(&d_P,sizeof(P));
+		cudaMemcpy(d_P, P, sizeof(P), cudaMemcpyHostToDevice);
+		
+		
+		cudaMalloc(&d_gradP,sizeof(gradP));
+		cudaMemcpy(d_gradP, gradP, sizeof(gradP), cudaMemcpyHostToDevice);
+		
+		
+		cudaMalloc(&d_gradW,sizeof(gradW));
+		cudaMemcpy(d_gradW, gradW, sizeof(gradW), cudaMemcpyHostToDevice);
+		
+		
+		cudaMalloc(&d_pie,sizeof(pie));
+		cudaMemcpy(d_pie, pie, sizeof(pie), cudaMemcpyHostToDevice);
+		
+		
+		cudaMalloc(&d_W,sizeof(W));
+		cudaMemcpy(d_W, W, sizeof(W), cudaMemcpyHostToDevice);
+		
+
 
 		int threadsPerBlock=128;
 		int blocksPerGrid=(m.size()/threadsPerBlock) +1;
