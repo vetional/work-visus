@@ -15,8 +15,10 @@
 #include "view/AnimDataModule.h"
 #include "vislib/memutils.h"
 #include "vector"
-//#define ONGPU 1
 
+//#define ONGPU 1
+//#define MODELFROMFILE 1
+#define DYNAMICTIME 1
 
 //std includes
 #include "cmath"
@@ -117,7 +119,7 @@ namespace megamol {
 			std::vector<glm::vec3> gradW;
 			std::vector<glm::vec3> pie;
 			std::vector<float> W;
-
+			bool SPHSimulation::loadOBJ(const char * path, std::vector<glm::vec3> & out_vertices);
 			void SPHSimulation::initData(std::vector<float> &m,std::vector<float> &roh,std::vector<float> &proh,
 				std::vector<float> &droh,std::vector<glm::mat3> &D,std::vector<float> &d,
 				std::vector<float>&eta,std::vector<glm::vec3> &pos,std::vector<glm::vec3> &vel,
@@ -183,8 +185,8 @@ namespace megamol {
 				std::vector<glm::vec3> &pacc);//see leap frog scheme
 
 			void SPHSimulation::correctV(std::vector<glm::vec3> &vel,std::vector<float> &m,
-				std::vector<float> &W,float epsilon,std::vector<float> &roh,
-				std::vector<glm::vec3> &pos,float h);//see equation 11		
+				std::vector<float> &W,std::vector<float> &roh,
+				std::vector<glm::vec3> &pos);//see equation 11		
 
 			void SPHSimulation::eventualCollision();
 
@@ -247,7 +249,7 @@ namespace megamol {
 			static const unsigned int frameCount;
 
 			/** Number of spheres to be generated */
-			static const unsigned int sphereCount;
+			static  unsigned int sphereCount;
 			// global radius of particles;
 
 			/**
