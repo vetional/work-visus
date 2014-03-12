@@ -39,9 +39,9 @@ namespace megamol
 
 
 #ifdef ONGPU
-		const unsigned int SPHSimulation::sphereCount = 2000;
+		 unsigned int SPHSimulation::sphereCount = 20250;
 #else
-		const unsigned int SPHSimulation::sphereCount = 200;
+		 unsigned int SPHSimulation::sphereCount = 150;
 #endif
 
 		/*
@@ -167,17 +167,19 @@ namespace megamol
 		// Global DATA Store for Evaluation Function
 		//--------------------------------------------------------------------------------------------------------------------------
 		long time=0;
-		float h=3*SPHSimulation::globalRadius;
-		float dt=0.001f;//time step
-		float vmax=100;//for dt update
-		float etaMax=3;//for dt update
-		float alpha=0.5;//bulk viscosity
-		float epsilon=0.1f;//for velocity correction
-		float roh0=1;//initial density
-		float c=300000;// in m/sec
+		float h=15*SPHSimulation::globalRadius;// kernel radius
+		float dt=0.0000001f;//time step
+		float vmax=300;//for dt update
+		float etaMax=600;//for dt update viscosity of the materail is represented by eta.
+		float alpha=1.5;//bulk viscosity
+		float epsilon=0.25f;//for velocity correction due to xsph value=[0,1]
+		float roh0=6.0;//reference density
+		float c=1030;// speed of sound in the medium in m/sec
 		float n=0.5f;//refer equations in paper for eta
-		float jumpN=0.5f;//jump number
-
+		float jumpN=192.5f;//jump number
+		glm::vec3 velocity(0.00002,-0.0002,-0.00005);//initial velocity of each particle
+		float commonMass=1;// common mass of each point in the material
+		float densityInit=100;//initial density vector initializied to this value.
 
 		std::vector<float> m;
 		std::vector<float> roh;
@@ -219,15 +221,15 @@ namespace megamol
 			std::vector<glm::vec3> &pie,std::vector<float> &W){
 
 
-				glm::vec3 velocity(0.02,0.02,.5);
+
 				for(int i = 0;i<SPHSimulation::sphereCount;i++){
-					m.push_back(1);
-					roh.push_back(1);
-					proh.push_back(1);
-					droh.push_back(1);
+					m.push_back(commonMass);
+					roh.push_back(densityInit);
+					proh.push_back(densityInit);
+					droh.push_back(densityInit);
 					D.push_back(zero);
 					d.push_back(ze);
-					
+
 					vel.push_back(velocity);
 					gradV.push_back(zero);
 					acc.push_back(z);
@@ -239,11 +241,17 @@ namespace megamol
 					pie.push_back(z);
 
 					eta.push_back(ze);
+#ifndef MODELFROMFILE
 					pos.push_back(z);
+#endif
 				}
 				float a1=-0.3;float b1=-.15;float c1=.5;
 				int dc=0;
+#ifndef ONGPU
 				int side=5;
+#else
+				int side=45;
+#endif
 				while(dc<SPHSimulation::sphereCount){
 
 
@@ -258,16 +266,18 @@ namespace megamol
 								pos[dc].z=c1;
 								dc++;
 							}
-							a1+=globalRadius*2.5f;
+							a1+=globalRadius*8.5f;
 						}
 						a1=-0.3;
-						b1+=globalRadius*2.5f;
+						b1+=globalRadius*6.5f;
 
-					}c1+=globalRadius*2.5f;b1=-.15;
+					}c1+=globalRadius*8.5f;b1=-.15;
 
 				}
-
-
+#ifdef MODELFROMFILE
+			//	bool res_obj = loadOBJ("H:\\MEGAmol\\deformables\\trunk\\models\\bunny01.obj", pos);
+				bool res_obj = loadOBJ("H:\\MEGAmol\\deformables\\trunk\\models\\sphere_lowres.obj", pos);
+#endif
 		}
 		bool SPHSimulation::getDataCallback(Call& caller) {
 			moldyn::MultiParticleDataCall *mpdc = dynamic_cast<moldyn::MultiParticleDataCall *>(&caller);
@@ -323,17 +333,17 @@ namespace megamol
 			SPHSimulation::updateAcc(gradP,gradS,pie,acc,pacc);//see equaqtion 2,12
 
 			SPHSimulation::updateLFS(vel,roh,proh,acc,pos,dt,pacc);//see leap frog scheme
-			SPHSimulation::correctV(vel,m,W,epsilon,roh,pos,h);//see equaqtion 11
+			SPHSimulation::correctV(vel,m,W,roh,pos);//see equaqtion 11
 #endif
 #ifdef ONGPU
 
 			gpu.theBigLoop(m,roh,proh,droh,D,d,eta,pos,vel,gradV,acc,pacc,S,gradS,P,
-				gradP,gradW,pie,W, h,sphereCount,epsilon,c,roh0,alpha,jumpN,dt);
+				gradP,gradW,pie,W, h,sphereCount,epsilon,c,roh0,alpha,jumpN,dt,etaMax);
 #endif
 			SPHSimulation::eventualCollision();
-
+#ifdef DYNAMICTIME
 			SPHSimulation::updateDT(dt,vmax,etaMax,c,h);//see equaqtion 13
-
+#endif
 			time+=dt;
 
 
@@ -390,12 +400,10 @@ namespace megamol
 			return res;
 		}
 
-				void SPHSimulation::findNeighbours(int index, std::vector<glm::vec3> &pos, 
+		void SPHSimulation::findNeighbours(int index, std::vector<glm::vec3> &pos, 
 			std::vector<int> &nxi,float h){
 
 				for(int i =0; i <pos.size();i++){
-
-
 
 					if(glm::distance(pos[index],pos[i])<h){
 
@@ -431,7 +439,7 @@ namespace megamol
 
 					gradW[j].x= multiplier*((float)pos[i].x-(float)pos[nxi[j]].x);
 					gradW[j].y= multiplier*(pos[i].y-pos[nxi[j]].y);
-					gradW[j].z= multiplier*(pos[i].y-pos[nxi[j]].z);
+					gradW[j].z= multiplier*(pos[i].z-pos[nxi[j]].z);
 				}
 		}
 
@@ -441,13 +449,11 @@ namespace megamol
 			std::vector<glm::vec3> &gradW, int index,std::vector<int> &nxi)
 		{
 
-			float gv=0;
-		
 			for(int j=0;j<nxi.size();j++)
 			{
-				
-				glm::vec3 v=(m[nxi[j]]/roh[nxi[j]])*(vel[nxi[j]]-vel[index]);
-				gradV[index]+=glm::outerProduct(v,gradW[j]);
+
+				glm::vec3 v=(vel[nxi[j]]-vel[index]);
+				gradV[index]+=((m[nxi[j]]/roh[nxi[j]])*glm::outerProduct(v,gradW[j]));
 
 			}
 
@@ -458,11 +464,11 @@ namespace megamol
 		}
 		void SPHSimulation::updateDDE(std::vector<glm:: mat3> &D,std::vector<float> &droh,int index){
 
-			
-				glm::mat3 D1= 0.5*D[index];
-				droh[index] = D1[0][0]+D1[1][1]+D1[2][2];
 
-			}//see equaqtion 10
+			glm::mat3 D1= 0.5*D[index];
+			droh[index] = D1[0][0]+D1[1][1]+D1[2][2];
+
+		}//see equaqtion 10
 		void SPHSimulation::compute_roh(std::vector<float>&roh,std::vector<float>&proh,std::vector<float>&m,
 			std::vector<float> &W, int index,std::vector<int> &nxi){
 
@@ -481,26 +487,30 @@ namespace megamol
 			float &c, int index){
 
 				P[index]=c*c*(roh[index]-roh0);
-			
+
 		}//see equaqtion 6
 
 		void SPHSimulation::updateEta(std::vector<float>&eta,std::vector<glm::mat3>&D,float n,int index) //see equaqtion 4
 		{
 
-				glm::mat3 D1= D[index];
+			glm::mat3 D1= D[index];
 
-				//compute the d from the current rate of deformation tensor 
-				float d11=std::sqrt(0.5*(D1[0][0]+D1[1][1]+D1[2][2])*(D1[0][0]+D1[1][1]+D1[2][2]));
-				//the whole system crashes as d11 is zero initially 
-				//due to same velocity of each particle at startup.
-				//therefore counter measure taken.(has to be verified though)
-				if(d11==0)
-					d11=1;
+			//compute the d from the current rate of deformation tensor 
+			float d11=std::sqrt(0.5*(D1[0][0]+D1[1][1]+D1[2][2])*(D1[0][0]+D1[1][1]+D1[2][2]));
+			//the whole system crashes as d11 is zero initially 
+			//due to same velocity of each particle at startup.
+			//therefore counter measure taken.(has to be verified though)
+			if(d11==0)
+				d11=1;
 
-				float exp=std::exp(-(d11*(jumpN+1)));
-				// since we have fixed n to be .5 other wise use the commented version.
-				eta[index]=(1-exp)*((1/d11)+(1/d11));
-				//eta[index]=(1-exp)*(std::pow(d11,n-1)+(1/d11));
+			float exp=std::exp(-(d11*(jumpN+1)));
+			// since we have fixed n to be .5 other wise use the commented version.
+			float temp=(1-exp)*((1/d11)+(1/d11));
+			if(temp<etaMax)
+				eta[index]=temp;
+			else
+				eta[index]=etaMax;
+			//eta[index]=(1-exp)*(std::pow(d11,n-1)+(1/d11));
 
 		}
 
@@ -508,10 +518,10 @@ namespace megamol
 			std::vector<glm::mat3>&S,int index){
 
 
-					S[index]=eta[index]*D[index];
-	
+				S[index]=eta[index]*D[index];
+
 		}
-	void SPHSimulation::compute_pi(std::vector<float>&m,std::vector<float>&roh,std::vector<glm::vec3>&pie,float h,
+		void SPHSimulation::compute_pi(std::vector<float>&m,std::vector<float>&roh,std::vector<glm::vec3>&pie,float h,
 			std::vector<glm::vec3>&gradW,int index,std::vector<int> &nxi,std::vector<glm::vec3>&vel,
 			std::vector<glm::vec3>&pos,float alpha,float c){
 
@@ -556,7 +566,7 @@ namespace megamol
 				for(int j=0;j<nxi.size();j++)
 				{
 
-					ptemp=(m[nxi[j]])*((P[nxi[j]]/std::pow(roh[nxi[j]],2))+P[index]/std::pow(roh[index],2));
+					ptemp=(m[nxi[j]])*((P[nxi[j]]/std::pow(roh[nxi[j]],2))+(P[index]/std::pow(roh[index],2)));
 					sum+=ptemp*gradW[j];
 
 				}
@@ -566,7 +576,7 @@ namespace megamol
 		void SPHSimulation::updateAcc(std::vector<glm::vec3>&gradP,std::vector<glm::vec3> &gradS,
 			std::vector<glm::vec3>&pie,std::vector<glm::vec3> &acc,std::vector<glm::vec3> &pacc){
 
-				glm::vec3 gr(0.0f,-10.0001f,0.0f);
+				glm::vec3 gr(0.0f,0.00000005f,0.0f);
 				for(int i=0;i<gradP.size();i++){
 
 					pacc[i]=acc[i];
@@ -588,26 +598,27 @@ namespace megamol
 					// roh has been updated in the paper using LFS which is not reasonable to me 
 					// as the density should be dependent only on the current configuration but it seems 
 					// it needs some sort of help from previous stages.
-				
+
 					roh[i]=roh[i]+0.5f*(proh[i]+roh[i])*dt;
 				}
 
 		}
 		void SPHSimulation::correctV(std::vector<glm::vec3> &vel,std::vector<float> &m,
-			std::vector<float> &W,float epsilon,std::vector<float> &roh,
-			std::vector<glm::vec3> &pos,float h){//see equaqtion 11	
+			std::vector<float> &W,std::vector<float> &roh,
+			std::vector<glm::vec3> &pos){//see equaqtion 11	
 
 				for(int i = 0;i<m.size();i++){
 
 					std::vector<int> nxi;
 					SPHSimulation::findNeighbours(i,pos,nxi,h);
 					glm::vec3 sum(0.0f,0.0f,0.0f);
+					SPHSimulation::calcGradW(W,gradW,pos,i,nxi);
 					for(int j=0;j<nxi.size();j++)
 					{
 						sum+=((2*m[nxi[j]])/(roh[i]+roh[nxi[j]]))*(vel[nxi[j]]-vel[i])*W[j];
 					}		
 
-					vel[i]+=epsilon*sum;
+					vel[i]=vel[i]+epsilon*sum;
 					pos[i]=pos[i]+vel[i]*dt;
 				}
 		}
@@ -621,14 +632,64 @@ namespace megamol
 				dt=0.1*t1;
 			else
 				dt=0.1*t2;
+			if(10*time%30==0){
+				std::cout<<"timestep is "<<dt<< std::endl;
+				std::cout<<"time is "<<time<< std::endl;}
 		}
 		void SPHSimulation::cudaTest(){
 #ifdef ONGPU
 
 			gpu.initializeGPU();
+			std::cout<< std::endl<< std::endl<<"$$$$$$$$$$GPU INIT DONE$$$$$$$$$$$$$$$"<< std::endl<< std::endl;
 #endif
 
 
 		}
+
+		bool SPHSimulation::loadOBJ(const char * path, std::vector<glm::vec3> & out_vertices){
+			printf("Loading OBJ file %s...\n", path);
+
+			std::vector<unsigned int> vertexIndices;
+			 
+			int count=0;
+
+
+			FILE * file = fopen(path, "r");
+			if( file == NULL ){
+				printf("Impossible to open the file ! \n");
+				return false;
+			}
+			
+			while( 1 )
+			{
+
+				char lineHeader[128];
+				// read the first word of the line
+				int res = fscanf(file, "%s", lineHeader);
+				if (res == EOF)
+					break; // EOF = End Of File. Quit the loop.
+
+				// else : parse lineHeader
+
+				if ( strcmp( lineHeader, "v" ) == 0 ){
+					glm::vec3 vertex;
+
+					fscanf(file, "%f %f %f\n", &vertex.x, &vertex.y, &vertex.z );
+					out_vertices.push_back(vertex);
+					count++;
+				}
+			else{
+				// Probably a comment, eat up the rest of the line
+				char stupidBuffer[1000];
+				fgets(stupidBuffer, 1000, file);
+			}
+			
+			SPHSimulation::sphereCount=count;
+
+		}
+
+
+		return true;
 	}
+}
 }
