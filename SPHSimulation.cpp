@@ -65,11 +65,16 @@ namespace megamol
 			float *vertices = new float[18];
 
 			vertices[0] = 0.0f; vertices[1] = 0.0f; vertices[2] = 0.0f;
-			vertices[3] = 0.0f; vertices[4] = 1.50f; vertices[5] = 0.0f;
-			vertices[6] = 0.0f; vertices[7] = 0.0f; vertices[8] = 1.0f;
+			vertices[3] = 0.0f; vertices[4] = 2.50f; vertices[5] = 0.0f;
+			vertices[6] = 0.0f; vertices[7] = 0.0f; vertices[8] = 02.50f;
 			vertices[9] = 0.0f; vertices[10] = 0.0f; vertices[11] = 0.0f;
 			vertices[12] = 0.0f; vertices[13] = -1.50f; vertices[14] = 0.0f;
-			vertices[15] = 0.0f; vertices[16] = 0.0f; vertices[17] = -1.0f;
+			vertices[15] = 0.0f; vertices[16] = 0.0f; vertices[17] = -02.50f;
+
+			for (int i = 0; i < 18; i+=3)
+			{
+				triList.push_back(glm::vec3 (vertices[i],vertices[i+1],vertices[i+2])); 
+			}
 
 			meshClipPlane.SetVertexData<float*, float*, float*, float*>(6, vertices, NULL, NULL, NULL, true);
 
@@ -184,20 +189,24 @@ namespace megamol
 		// Global DATA Store for Evaluation Function
 		//--------------------------------------------------------------------------------------------------------------------------
 		long time=0;
-		float h=25*SPHSimulation::globalRadius;// kernel radius
+		float h=20*SPHSimulation::globalRadius;// kernel radius
 		float dt=0.0000001f;//time step
-		float vmax=300;//for dt update
-		float etaMax=600;//for dt update viscosity of the materail is represented by eta.
+		float vmax=150;//for dt update
+		float etaMax=1600;//for dt update viscosity of the materail is represented by eta.
 		float alpha=1.5;//bulk viscosity
-		float epsilon=0.5f;//for velocity correction due to xsph value=[0,1]
+		float epsilon=0.30f;//for velocity correction due to xsph value=[0,1]
 		float roh0=8.0;//reference density -- the system will calculate pressure with this reference and if not set correctly it might greatly deform the system.
 		float c=1030;// speed of sound in the medium in m/sec
 		float n=0.5f;//refer equations in paper for eta
-		float jumpN=192.5f;//jump number
-		glm::vec3 velocity(-10.0,-40,10.);//initial velocity of each particle
+		float jumpN=12.5f;//jump number
+		glm::vec3 velocity(-150.0,-10,0.);//initial velocity of each particle
 		float commonMass=1;// common mass of each point in the material
 		float densityInit=100;//initial density vector initializied to this value.
 
+
+		int numCut=0;
+		std::vector<glm::vec3> triList;
+		std::vector<sideofPlane> sc;
 		std::vector<float> m;
 		std::vector<float> roh;//stores density values for each particle
 		std::vector<float> proh;//stores density values for each particle in last timestep
@@ -298,7 +307,6 @@ namespace megamol
 #endif
 				btCollisionShape* fallShape = new btSphereShape(globalRadius);
 				fallShape->calculateLocalInertia(commonMass,fallInertia);
-
 		}
 		bool SPHSimulation::getDataCallback(Call& caller) {
 			moldyn::MultiParticleDataCall *mpdc = dynamic_cast<moldyn::MultiParticleDataCall *>(&caller);
@@ -361,7 +369,7 @@ namespace megamol
 			gpu.theBigLoop(m,roh,proh,droh,D,d,eta,pos,vel,gradV,acc,pacc,S,gradS,P,
 				gradP,gradW,pie,W, h,sphereCount,epsilon,c,roh0,alpha,jumpN,dt,etaMax);
 #endif
-#ifndef COLLISION
+#ifdef COLLISION
 			SPHSimulation::eventualCollision(pos,vel);
 #endif
 #ifdef DYNAMICTIME
@@ -447,6 +455,63 @@ namespace megamol
 			return res;
 		}
 
+		void  SPHSimulation::computePlane(cutPlane &pl)
+		{
+
+
+			float vx = (pl.points[1].x - pl.points[2].x);
+			float vy = (pl.points[1].y - pl.points[2].y);
+			float vz = (pl.points[1].z - pl.points[2].z);
+
+			float wx = (pl.points[0].x - pl.points[1].x);
+			float wy = (pl.points[0].y - pl.points[1].y);
+			float wz = (pl.points[0].z - pl.points[1].z);
+
+			float vw_x = vy * wz - vz * wy;
+			float vw_y = vz * wx - vx * wz;
+			float vw_z = vx * wy - vy * wx;
+
+			float mag = sqrtf((vw_x * vw_x) + (vw_y * vw_y) + (vw_z * vw_z));
+
+			if ( mag > 0.000001f )
+			{
+
+				mag = 1.0f/mag; // compute the recipricol distance
+
+				pl.a = vw_x * mag;
+				pl.b = vw_y * mag;
+				pl.c = vw_z * mag;
+				pl.d = 0.0f - ((pl.a*pl.points[0].x)+(pl.b*pl.points[0].y)+(pl.c*pl.points[0].z));
+
+			}
+
+		}
+		void SPHSimulation::addCutPlane(std::vector<glm::vec3> &pos,std::vector<sideofPlane> &sc,std::vector<glm::vec3> &pt){
+
+			cutPlane plane;
+
+			for (int i = 0; i < 4; i++)
+			{
+				plane.points.push_back(pt[i]);
+			}
+
+			computePlane(plane);
+
+			for (int i = 0; i < SPHSimulation::sphereCount; i++)
+			{
+				//a*x+b*y+c*z+d = 0;
+				sideofPlane pl;
+				sc.push_back(pl);
+
+				if(glm::dot( glm::vec4(plane.a,plane.b,plane.c,plane.d), glm::vec4(pos[i].x,pos[i].y,pos[i].z,1) )>0 ){
+					sc[i].a[numCut]=numCut;
+				}
+				else{
+					sc[i].a[numCut]=-numCut;
+				}
+			}
+
+		}
 		void SPHSimulation::findNeighbours(int index, std::vector<glm::vec3> &pos, 
 			std::vector<int> &nxi,float h){
 
@@ -455,7 +520,18 @@ namespace megamol
 					if(glm::distance(pos[index],pos[i])<h){
 
 						if(index!=i){
-							nxi.push_back(i);
+
+							int flag=0;
+
+							for (int j = 0; j < numCut; j++)
+							{
+								if(sc[i].a[j]!=sc[index].a[j]){
+									flag=1;
+									break;
+								}
+							}
+							if(flag==0)
+								nxi.push_back(i);
 
 						}
 					}
@@ -669,120 +745,561 @@ namespace megamol
 
 					vel[i]=vel[i]+epsilon*sum;
 					pos[i]=pos[i]+vel[i]*dt;
-				
+
 				}
 		}
 
-		//giving bullet phyiscs instructions what to do when a collision pair is detected
-		// using a callback function on near phase detections 
 
-		void myCdaCallback(btBroadphasePair& collisionPair,
-			btCollisionDispatcher& dispatcher, btDispatcherInfo& dispatchInfo){
+		// Assume that classes are already given for the objects:
+		//    Point and Vector with
+		//        coordinates {float x, y, z;}
+		//        operators for:
+		//            == to test  equality
+		//            != to test  inequality
+		//            Point   = Point ± Vector
+		//            Vector =  Point - Point
+		//            Vector =  Scalar * Vector    (scalar product)
+		//            Vector =  Vector * Vector    (3D cross product)
+		//    Line and Ray and Segment with defining  points {Point P0, P1;}
+		//        (a Line is infinite, Rays and  Segments start at P0)
+		//        (a Ray extends beyond P1, but a  Segment ends at P1)
+		//    Plane with a point and a normal {Point V0; Vector  n;}
+		//   #define SMALL_NUM   0.00000001 // anything that avoids division overflow
+		////  dot product (3D) which allows vector operations in arguments
+		//  #define dot(u,v)   ((u).x * (v).x + (u).y * (v).y + (u).z * (v).z)
+		//  #define perp(u,v)  ((u).x * (v).y - (u).y * (v).x)  // perp product  (2D)
+
+		//===================================================================
+
+
+
+
+		// intersect3D_SegmentPlane(): find the 3D intersection of a segment and a plane
+		//    Input:  S = a segment, and Pn = a plane = {Point V0;  Vector n;}
+		//    Output: *I0 = the intersect point (when it exists)
+		//    Return: 0 = disjoint (no intersection)
+		//            1 =  intersection in the unique point *I0
+		//            2 = the  segment lies in the plane
+
+
+		//int intersect3D_SegmentPlane( Segment S, cutPlane Pn, glm::vec3* I )
+		//{
+		//    Vector    u = S.P1 - S.P0;
+		//    Vector    w = S.P0 - Pn.V0;
+		//
+		//    float     D = dot(Pn.n, u);
+		//    float     N = -dot(Pn.n, w);
+		//
+		//    if (fabs(D) < SMALL_NUM) {           // segment is parallel to plane
+		//        if (N == 0)                      // segment lies in plane
+		//            return 2;
+		//        else
+		//            return 0;                    // no intersection
+		//    }
+		//    // they are not parallel
+		//    // compute intersect param
+		//    float sI = N / D;
+		//    if (sI < 0 || sI > 1)
+		//        return 0;                        // no intersection
+		//
+		//    *I = S.P0 + sI * u;                  // compute segment intersect point
+		//    return 1;
+		//}
+
+		// intersect3D_RayTriangle(): find the 3D intersection of a ray with a triangle
+		//    Input:  a ray R, and a triangle T
+		//    Output: *I = intersection point (when it exists)
+		//    Return: -1 = triangle is degenerate (a segment or point)
+		//             0 =  disjoint (no intersect)
+		//             1 =  intersect in unique point I1
+		//             2 =  are in the same plane
+		bool SPHSimulation::intersect3D_RayTriangle( Segment &R, glm::vec3* T)
+		{
+			glm::vec3 I ;
+
+			glm::vec3    u, v, n;              // triangle vectors
+			glm::vec3   dir, w0, w;           // ray vectors
+			float     r, a, b;              // params to calc ray-plane intersect
+
+			// get triangle edge vectors and plane normal
+			u = T[1] - T[0];
+			v = T[2] - T[0];
+			n = u * v;              // cross product
+			if (n == (glm::vec3)(0,0,0))             // triangle is degenerate
+				return FALSE;                  // do not deal with this case
+
+			dir = R.P1 - R.P0;              // ray direction vector
+			w0 = R.P0 - T[0];
+			a = -glm::dot(n,w0);
+			b = glm::dot(n,dir);
+			if (fabs(b) < .0000001) {     // ray is  parallel to triangle plane
+				if (a == 0)                 // ray lies in triangle plane
+					return TRUE;
+				else return FALSE;              // ray disjoint from plane
+			}
+
+			// get intersect point of ray with triangle plane
+			r = a / b;
+			if (r < 0.0)                    // ray goes away from triangle
+				return FALSE;                   // => no intersect
+			// for a segment, also test if (r > 1.0) => no intersect
+
+			I = R.P0 + r * dir;            // intersect point of ray and plane
+
+			// is I inside T?
+			float    uu, uv, vv, wu, wv, D;
+			uu = glm::dot(u,u);
+			uv = glm::dot(u,v);
+			vv = glm::dot(v,v);
+			w = I - T[0];
+			wu = glm::dot(w,u);
+			wv = glm::dot(w,v);
+			D = uv * uv - uu * vv;
+
+			// get and test parametric coords
+			float s, t;
+			s = (uv * wv - vv * wu) / D;
+			if (s < 0.0 || s > 1.0)         // I is outside T
+				return FALSE;
+			t = (uv * wu - uu * wv) / D;
+			if (t < 0.0 || (s + t) > 1.0)  // I is outside T
+				return FALSE;
+
+			return TRUE;                       // I is in T
+		}
+		//
+		//Separating axis testing for a sphere
+		//
+		//From the above we conclude that a triangle has three kinds of features that are involved in testing: vertices (3), edges (3), and a face (1). But what about a sphere? Well, if you followed the justification of the test, it should be clear a sphere has only one feature, but it varies from test to test: the point on the sphere surface closest to each given triangle feature!
+		//
+		//If we define the problem as testing the intersection between a triangle T, defined by the vertices A, B, and C, and a sphere S, given by its center point P and a radius r, the axes we need to test are therefore the following:
+		//
+		//    normal to the triangle plane
+		//    perpendicular to AB through P
+		//    perpendicular to BC through P
+		//    perpendicular to CA through P
+		//    through A and P
+		//    through B and P
+		//    through C and P 
+
+		bool SPHSimulation::sphereIntersectionTriangle3D(glm::vec3* T,glm::vec3 P,float radius){
+			//T is the triangle and P is the center of the sphere
+			glm::vec3 A = T[0] - P;
+			glm::vec3 B = T[1] - P;
+			glm::vec3 C = T[2] - P;
+			float rr = radius*radius;
+			glm::vec3 V = glm::cross(B - A, C - A);
+			float d = glm::dot(A, V);
+			float e = glm::dot(V, V);
+			bool sep1=FALSE;
+			if( d * d > rr * e)
+				sep1 =TRUE;
+
+			float aa = glm::dot(A, A);
+			float ab = glm::dot(A, B);
+			float ac = glm::dot(A, C);
+			float bb = glm::dot(B, B);
+			float bc = glm::dot(B, C);
+			float cc = glm::dot(C, C);
+			bool sep2 = (aa > rr) && (ab > aa) && (ac > aa);
+			bool sep3 = (bb > rr) && (ab > bb) && (bc > bb);
+			bool sep4 = (cc > rr) && (ac > cc) && (bc > cc);
+
+			glm::vec3 AB = B - A;
+			glm::vec3 BC = C - B;
+			glm::vec3 CA = A - C;
+			float d1 = ab - aa;
+			float d2 = bc - bb;
+			float d3 = ac - cc;
+			float e1 = glm::dot(AB, AB);
+			float e2 = glm::dot(BC, BC);
+			float e3 = glm::dot(CA, CA);
+			glm::vec3 Q1 = A * e1 - d1 * AB;
+			glm::vec3 Q2 = B * e2 - d2 * BC;
+			glm::vec3 Q3 = C * e3 - d3 * CA;
+			glm::vec3 QC = C * e1 - Q1;
+			glm::vec3 QA = A * e2 - Q2;
+			glm::vec3 QB = B * e3 - Q3;
+			bool sep5 = (glm::dot(Q1, Q1) > rr * e1 * e1) && (glm::dot(Q1, QC) > 0);
+			bool sep6 = (glm::dot(Q2, Q2) > rr * e2 * e2) &&(glm::dot(Q2, QA) > 0);
+			bool sep7 = (glm::dot(Q3, Q3) > rr * e3 * e3) && (glm::dot(Q3, QB) > 0);
+
+			bool separated = sep1 || sep2 ||sep3 || sep4 || sep5 || sep6 || sep7;
+
+			return !separated;
+		}
+
+
+		void SPHSimulation::broadPhase(treeNode* node, std::vector<treeNode*> &broadlist,
+			std::vector<glm::vec3> triList)
+		{
+			//here the
+
+
+			if(node->leftChild==NULL && node->rightChild==NULL)
+			{
+				bool dTN;
+				for (int i = 0; i < triList.size(); i+=3)
+				{
+
+					glm::vec3 *T;
+					T=(glm::vec3*) malloc (3);
+					T[0]=triList[i];
+					T[1]=triList[i+1];
+					T[2]=triList[i+2];
+					dTN=SPHSimulation::sphereIntersectionTriangle3D(T,glm::vec3(node->location.x,node->location.y,node->location.z),node->radius);
+
+					if(dTN==TRUE)
+					{
+
+						break;
+					}
+
+				}
+				if(dTN==TRUE)
+				{
+					broadlist.push_back(node);
+
+				}
+				std::cout<<"broadlist point inserted";
+			}
+			else
+			{
+				SPHSimulation::broadPhase(node->leftChild,broadlist,triList);
+				SPHSimulation::broadPhase(node->rightChild,broadlist,triList);
+			}
+
+
 
 
 		}
 
-		//using the collision detection module of BUllet physics
+
+
+
+
+		float SPHSimulation::boundingRadius(glm::vec4 median,std::vector <glm::vec4> &points){
+
+			float dist=0;
+			float temp;
+			for(int kk=0;kk<points.size();kk++){
+
+				temp=glm::distance(glm::vec3(median.x,median.y,median.z),glm::vec3(points[kk].x,points[kk].y,points[kk].z));
+
+				if(dist<temp)
+					dist=temp;
+			}
+
+			return dist;
+
+		}
+
+		struct treeNode* SPHSimulation::NewNode() {
+			struct treeNode* node = new (struct treeNode);    // "new" is like "malloc"
+
+			node->location=glm::vec4(0,0,0,0);
+			node->leftChild = NULL;
+			node->rightChild = NULL;
+			node->radius=0;
+			node->points.push_back(glm::vec4(0,0,0,0));
+
+			return(node);
+		} 
+
+		void SPHSimulation::sortPointList(std::vector <glm::vec4> &points, int axis){
+
+
+
+			for(int i=points.size()-1;i>0;i--){
+
+				for(int j=0;j<i;j++){
+
+					if(points[i][axis]<points[j][axis])
+					{
+						glm::vec4 temp=points[i];
+						points[i]=points[j];
+						points[j]=temp;
+					}
+
+				}
+			}
+		}
+
+		struct treeNode* SPHSimulation::computeKdTree(std::vector<glm::vec4> &points,
+			treeNode *node,int depth){
+
+
+
+				int axis=depth%3;
+
+				sortPointList(points,axis);
+				int in=floor((float)points.size()/2);
+				glm::vec4 median (points[in]);	
+
+				if(depth==0)
+				{
+
+					node->location=median;
+				}
+
+				if(points.size()<20)
+				{
+
+					node->location=median;
+
+					for(int fill=0;fill<points.size();fill++)
+					{
+						node->points.push_back(points[fill]);
+					}
+					node->radius=boundingRadius(median,points);
+					node->leftChild=NULL;
+					node->rightChild=NULL;
+				}
+
+				else
+				{
+
+					std::vector<glm::vec4> lcpoints;
+					std::vector<glm::vec4> rcpoints;
+
+					for(int i =0;i<points.size();i++)
+					{
+
+						glm::vec4 point=points[i];
+
+						if(i<= floor((float)points.size()/2))
+							lcpoints.push_back(point);
+						else 
+							rcpoints.push_back(point);
+
+					}
+
+					treeNode* emptylc=NewNode();
+					treeNode* emptyrc=NewNode();
+
+					if(depth!=0)
+						node->location=median;
+
+					node->radius=boundingRadius(median,points);
+
+					node->leftChild=computeKdTree(lcpoints,emptylc,depth+1);
+					node->rightChild=computeKdTree(rcpoints,emptyrc,depth+1);
+
+				}
+				return node;
+		}
+
 		void SPHSimulation::eventualCollision(std::vector<glm::vec3> &pos,std::vector<glm::vec3> &vel){
 
+			//Compute kd tree for the rigid body
 
-			//keep track of the shapes, we release memory at exit.
-			//make sure to re-use collision shapes among rigid bodies whenever possible!
+			//treeNode* root=new  treeNode();
+			//std::vector <glm::vec4> points;
 
-			btVector3 *positions; 
-			positions=(btVector3*)malloc(sizeof(float)*sphereCount*4);
+			//for(int k=0;k<pos.size();k++)
+			//{
+			//	points.push_back(glm::vec4(pos[k],k));
 
-			for (int i = 0; i < sphereCount; i++)
+			//}
+			//root=SPHSimulation::computeKdTree(points,root,0);		
+
+			//std::vector<treeNode*> broadlist;
+
+
+			//SPHSimulation::broadPhase(root,broadlist,triList);
+
+
+			//std::vector<glm::vec4>  ptl;
+			//for(int i=0;i<broadlist.size();i++){
+
+			//	glm::vec4 pt=broadlist[i]->location;
+
+			//	for (int k = 0; k < broadlist[i]->points.size(); k++)
+			//	{
+			//		ptl.push_back(broadlist[i]->points[k]);
+			//	}
+
+			//}
+
+			//for (int k = 0; k < ptl.size(); k++)
+			//{
+			//	for (int i = 0; i < triList.size(); i+=3)
+			//	{
+			//		glm::vec3 *T=new glm::vec3[3];;
+			//		T=(glm::vec3*) malloc (3);
+			//		T[0]=triList[i];
+			//		T[1]=triList[i+1];
+			//		T[2]=triList[i+2];
+			//		glm::vec3 tp=glm::vec3(ptl[k].x,ptl[k].y,ptl[k].z);
+			//		bool currentPos=SPHSimulation::sphereIntersectionTriangle3D(T,tp,globalRadius);
+			//		glm::vec3 np=tp+vel[ptl[k].a]*dt;
+			//		bool nextPos=SPHSimulation::sphereIntersectionTriangle3D(T,np,globalRadius);
+			//		Segment R;
+			//		R.P0=tp;
+			//		R.P1=np;
+			//		int lineInt=SPHSimulation::intersect3D_RayTriangle( R,T);
+
+			//		if(currentPos||nextPos||lineInt){
+			//			glm::vec3 V = glm::cross(T[1] - T[0], T[2] - T[0]);
+
+			//			float angle=glm::angle(V,vel[ptl[k].a]);
+			//			float ca=cos(angle);
+			//			vel[ptl[k].a]=-ca*vel[ptl[k].a]+(1-ca)*vel[ptl[k].a];
+
+			//		}
+
+			//	}	
+			//}
+			for (int k = 0; k < pos.size(); k++)
 			{
-				positions[i].setX((float)pos[i].x);
-				positions[i].setY((float)pos[i].y);
-				positions[i].setZ((float)pos[i].z);
+				for (int i = 0; i < triList.size(); i+=3)
+				{
+					glm::vec3 *T=new glm::vec3[3];
 
+					T[0]=glm::vec3(triList[i].x,triList[i].y,triList[i].z);
+					T[1]=glm::vec3(triList[i+1]);
+					T[2]=glm::vec3(triList[i+2]);
+
+					glm::vec3 tp=pos[k];
+
+					bool currentPos=SPHSimulation::sphereIntersectionTriangle3D(T,tp,globalRadius);
+
+					glm::vec3 np=tp+vel[k]*dt;
+					bool nextPos=SPHSimulation::sphereIntersectionTriangle3D(T,np,globalRadius);
+
+					Segment R;
+					R.P0=tp;
+					R.P1=np;
+
+					bool lineInt=false; 
+					lineInt=SPHSimulation::intersect3D_RayTriangle( R,T);
+
+					if(currentPos||nextPos||lineInt){
+
+						glm::vec3 V = glm::cross(T[1] - T[0], T[2] - T[0]);
+						// cosθ = a.b / |a||b| 
+						float an=glm::dot(V,vel[k])/(glm::length(V)*glm::length(vel[k]));
+						an=std::abs(an);
+						float sa=std::sqrt(1-(an*an));
+						vel[k]=(-5.35f*an*vel[k]+(sa)*vel[k]);
+
+						break;
+					}
+
+				}	
 			}
-
-			btVector3 halfExt(1,1.51,1);
-			btCollisionShape* box=new btBoxShape (halfExt);
-			btCollisionShape* fallShape = new btSphereShape(globalRadius);
-
-
-
-			btDefaultCollisionConfiguration* collisionConfiguration = new btDefaultCollisionConfiguration();
-			btCollisionDispatcher* dispatcher = new btCollisionDispatcher(collisionConfiguration);
-			btVector3	worldAabbMin(-100,-100,-100);
-			btVector3	worldAabbMax(100,100,100);
-
-			btAxisSweep3*	broadphase = new btAxisSweep3(worldAabbMin,worldAabbMax);
-			int numObj=SPHSimulation::sphereCount+1;
-			btCollisionObject*	objects;
-
-			btSequentialImpulseConstraintSolver* solver = new btSequentialImpulseConstraintSolver;
-			btDiscreteDynamicsWorld* dynamicsWorld = new btDiscreteDynamicsWorld(dispatcher,broadphase,solver,collisionConfiguration);
-			dynamicsWorld->setGravity(btVector3(0,-10,0));
-
-			btCollisionShape* groundShape = new btStaticPlaneShape(btVector3(0,-1,0),0);
-
-			btDefaultMotionState* groundMotionState = new btDefaultMotionState(btTransform(btQuaternion(0,0,0,1),btVector3(0,-1,0)));
-			btRigidBody::btRigidBodyConstructionInfo groundRigidBodyCI(0,groundMotionState,groundShape,btVector3(0,0,0));
-			btRigidBody* groundRigidBody = new btRigidBody(groundRigidBodyCI);
-			dynamicsWorld->addRigidBody(groundRigidBody);
-
-			btDefaultMotionState* groundMotionState1 = new btDefaultMotionState(btTransform(btQuaternion(0,0,0,1),btVector3(0,-1,0)));
-			btRigidBody::btRigidBodyConstructionInfo groundRigidBodyCI1(0,groundMotionState1,groundShape,btVector3(0,0,0));
-			btRigidBody* groundRigidBody1 = new btRigidBody(groundRigidBodyCI1);
-			dynamicsWorld->addRigidBody(groundRigidBody1);
-
-			btDefaultMotionState* boxMotionState = new btDefaultMotionState(btTransform(btQuaternion(0,0,0,1),btVector3(0,0,-1)));
-			btRigidBody::btRigidBodyConstructionInfo boxRigidBodyCI(0,boxMotionState,box,btVector3(0,0,0));
-			btRigidBody* boxRigidBody = new btRigidBody(boxRigidBodyCI);
-			dynamicsWorld->addRigidBody(boxRigidBody);
-			
-			int bodiesBefore=3;
-
-			std::vector<btRigidBody*> fallRigidBody;
-			for (int i = 0; i < sphereCount; i++)
-			{
-				btRigidBody* frb;
-
-				btDefaultMotionState* fallMotionState =
-					new btDefaultMotionState(btTransform(btQuaternion(0,0,0,1),positions[i]));
-				btVector3 lv((float)vel[i].x,(float)vel[i].y,(float)vel[i].z);
-
-				btRigidBody::btRigidBodyConstructionInfo fallRigidBodyCI(commonMass,fallMotionState,fallShape,fallInertia);
-				frb=new btRigidBody(fallRigidBodyCI);
-				frb->setLinearVelocity(lv);
-				fallRigidBody.push_back(frb);
-				dynamicsWorld->addRigidBody(frb);
-
-			}
-
-			dynamicsWorld->stepSimulation(dt,2);
-
-
-			for (int i = 0; i < sphereCount; i++)
-			{
-				btCollisionObject* obj = dynamicsWorld->getCollisionObjectArray()[i+bodiesBefore];
-				btRigidBody* body = btRigidBody::upcast(obj);
-
-				btTransform trans;
-				fallRigidBody[i]->getMotionState()->getWorldTransform(trans);
-				//btVector3 vtmp;
-				btVector3 vtmp1;
-				//vtmp=fallRigidBody[i-1]->getLinearVelocity();
-				vtmp1=body->getLinearVelocity();
-				pos[i]=glm::vec3( trans.getOrigin().getX(), trans.getOrigin().getY(), trans.getOrigin().getZ());
-				vel[i]=glm::vec3(vtmp1.getX(),vtmp1.getY(),vtmp1.getZ());
-				btVector3 aa;
-			}
-			
-			delete fallShape;
-			delete dynamicsWorld;
-			delete solver;
-			delete collisionConfiguration;
-			delete dispatcher;
-			delete broadphase;
-			free(positions);
 
 		}
+		//giving bullet phyiscs instructions what to do when a collision pair is detected
+		// using a callback function on near phase detections
+
+		//void myCdaCallback(btBroadphasePair& collisionPair,
+		//	btCollisionDispatcher& dispatcher, btDispatcherInfo& dispatchInfo){
+
+
+		//}
+
+		////using the collision detection module of BUllet physics
+		//void SPHSimulation::eventualCollision(std::vector<glm::vec3> &pos,std::vector<glm::vec3> &vel){
+
+
+		//	//keep track of the shapes, we release memory at exit.
+		//	//make sure to re-use collision shapes among rigid bodies whenever possible!
+
+		//	btVector3 *positions;
+		//	positions=(btVector3*)malloc(sizeof(float)*sphereCount*4);
+
+		//	for (int i = 0; i < sphereCount; i++)
+		//	{
+		//		positions[i].setX((float)pos[i].x);
+		//		positions[i].setY((float)pos[i].y);
+		//		positions[i].setZ((float)pos[i].z);
+
+		//	}
+
+		//	btVector3 halfExt(1,1.51,1);
+		//	btCollisionShape* box=new btBoxShape (halfExt);
+		//	btCollisionShape* fallShape = new btSphereShape(globalRadius);
+
+
+
+		//	btDefaultCollisionConfiguration* collisionConfiguration = new btDefaultCollisionConfiguration();
+		//	btCollisionDispatcher* dispatcher = new btCollisionDispatcher(collisionConfiguration);
+		//	btVector3	worldAabbMin(-100,-100,-100);
+		//	btVector3	worldAabbMax(100,100,100);
+
+		//	btAxisSweep3*	broadphase = new btAxisSweep3(worldAabbMin,worldAabbMax);
+		//	int numObj=SPHSimulation::sphereCount+1;
+		//	btCollisionObject*	objects;
+
+		//	btSequentialImpulseConstraintSolver* solver = new btSequentialImpulseConstraintSolver;
+		//	btDiscreteDynamicsWorld* dynamicsWorld = new btDiscreteDynamicsWorld(dispatcher,broadphase,solver,collisionConfiguration);
+		//	dynamicsWorld->setGravity(btVector3(0,-10,0));
+
+		//	btCollisionShape* groundShape = new btStaticPlaneShape(btVector3(0,1,0),0);
+
+		//	btDefaultMotionState* groundMotionState = new btDefaultMotionState(btTransform(btQuaternion(0,0,0,1),btVector3(0,0,-1)));
+		//	btRigidBody::btRigidBodyConstructionInfo groundRigidBodyCI(0,groundMotionState,groundShape,btVector3(0,0,0));
+		//	btRigidBody* groundRigidBody = new btRigidBody(groundRigidBodyCI);
+		//	dynamicsWorld->addRigidBody(groundRigidBody);
+
+		//	btDefaultMotionState* groundMotionState1 = new btDefaultMotionState(btTransform(btQuaternion(0,0,0,1),btVector3(0,-1,0)));
+		//	btRigidBody::btRigidBodyConstructionInfo groundRigidBodyCI1(0,groundMotionState1,groundShape,btVector3(0,0,0));
+		//	btRigidBody* groundRigidBody1 = new btRigidBody(groundRigidBodyCI1);
+		//	//dynamicsWorld->addRigidBody(groundRigidBody1);
+
+		//	btDefaultMotionState* boxMotionState = new btDefaultMotionState(btTransform(btQuaternion(0,0,0,1),btVector3(0,0,-1)));
+		//	btRigidBody::btRigidBodyConstructionInfo boxRigidBodyCI(0,boxMotionState,box,btVector3(0,0,0));
+		//	btRigidBody* boxRigidBody = new btRigidBody(boxRigidBodyCI);
+		//	dynamicsWorld->addRigidBody(boxRigidBody);
+
+		//	int bodiesBefore=2;
+
+		//	std::vector<btRigidBody*> fallRigidBody;
+		//	for (int i = 0; i < sphereCount; i++)
+		//	{
+		//		btRigidBody* frb;
+
+		//		btDefaultMotionState* fallMotionState =
+		//			new btDefaultMotionState(btTransform(btQuaternion(0,0,0,1),positions[i]));
+		//		btVector3 lv((float)vel[i].x,(float)vel[i].y,(float)vel[i].z);
+
+		//		btRigidBody::btRigidBodyConstructionInfo fallRigidBodyCI(commonMass,fallMotionState,fallShape,fallInertia);
+		//		frb=new btRigidBody(fallRigidBodyCI);
+		//		frb->setLinearVelocity(lv);
+		//		fallRigidBody.push_back(frb);
+		//		dynamicsWorld->addRigidBody(frb);
+
+		//	}
+
+		//	dynamicsWorld->stepSimulation(dt,2);
+
+
+		//	for (int i = 0; i < sphereCount; i++)
+		//	{
+		//		btCollisionObject* obj = dynamicsWorld->getCollisionObjectArray()[i+bodiesBefore];
+		//		btRigidBody* body = btRigidBody::upcast(obj);
+
+		//		btTransform trans;
+		//		fallRigidBody[i]->getMotionState()->getWorldTransform(trans);
+		//		//btVector3 vtmp;
+		//		btVector3 vtmp1;
+		//		//vtmp=fallRigidBody[i-1]->getLinearVelocity();
+		//		vtmp1=body->getLinearVelocity();
+		//		pos[i]=glm::vec3( trans.getOrigin().getX(), trans.getOrigin().getY(), trans.getOrigin().getZ());
+		//		vel[i]=glm::vec3(vtmp1.getX(),vtmp1.getY(),vtmp1.getZ());
+		//		btVector3 aa;
+		//	}
+
+		//	delete fallShape;
+		//	delete dynamicsWorld;
+		//	delete solver;
+		//	delete collisionConfiguration;
+		//	delete dispatcher;
+		//	delete broadphase;
+		//	free(positions);
+
+		//}
 		void SPHSimulation::updateDT(float &dt,float vmax,float etaMax,float c, float h){
 			//see equaqtion 13
 			float t1=h/(vmax+c);
