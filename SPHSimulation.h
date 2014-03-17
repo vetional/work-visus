@@ -19,6 +19,7 @@
 //#define ONGPU 1
 //#define MODELFROMFILE 1
 #define DYNAMICTIME 1
+#define COLLISION 1
 
 //std includes
 #include "cmath"
@@ -26,6 +27,11 @@
 #include "vector"
 #include <math.h> 
 
+//using bullet physics for collision detection 
+#include"btBulletCollisionCommon.h"
+#include "btBulletDynamicsCommon.h"
+
+#include "CallTriMeshData.h"
 // Include GLM
 #include "glm-0.9.4.6\glm\glm\glm.hpp"
 #include "glm-0.9.4.6\glm/glm/gtc/matrix_transform.hpp"
@@ -188,10 +194,16 @@ namespace megamol {
 				std::vector<float> &W,std::vector<float> &roh,
 				std::vector<glm::vec3> &pos);//see equation 11		
 
-			void SPHSimulation::eventualCollision();
+			void myCdaCallback(btBroadphasePair& collisionPair,
+			btCollisionDispatcher& dispatcher, btDispatcherInfo& dispatchInfo);
+			
+			void SPHSimulation::eventualCollision(std::vector<glm::vec3> &pos,std::vector<glm::vec3> &vel);
 
 			void SPHSimulation::updateDT(float &dt,float vmax,float etaMax,float c, float h);//see equaqtion 13
 			void SPHSimulation::cudaTest();
+			bool SPHSimulation::getTriExtentCallback(Call& caller) ;
+			bool SPHSimulation::getTrigetData(Call& caller) ;
+			long planeChange;
 		protected:
 
 			/**
@@ -290,7 +302,11 @@ namespace megamol {
 
 			/** The slot for requesting data */
 			CalleeSlot getDataSlot;
+			
+			/** The slot for requesting data */
+			CalleeSlot getTriDataSlot;
 
+			trisoup::CallTriMeshData::Mesh meshClipPlane;
 		};
 
 
