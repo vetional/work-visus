@@ -39,22 +39,39 @@ namespace megamol
 
 
 #ifdef ONGPU
-		 unsigned int SPHSimulation::sphereCount = 20250;
+		unsigned int SPHSimulation::sphereCount = 200;
 #else
-		 unsigned int SPHSimulation::sphereCount = 150;
+		unsigned int SPHSimulation::sphereCount = 150;
 #endif
 
 		/*
 		* SPHSimulation::SPHSimulation
 		*/
-		SPHSimulation::SPHSimulation(void) : view::AnimDataModule(), getDataSlot("getData", "Gets the data from the data source") {
+
+		SPHSimulation::SPHSimulation(void) : view::AnimDataModule(), getDataSlot("getData", "Gets the data from the data source"),getTriDataSlot("getTriData", "Gets the data from the data source") {
 			SPHSimulation::initData(m,roh,proh,droh,D,d,eta,pos,vel,gradV,acc,pacc,S,gradS,P,gradP,gradW,pie,W);
 #ifdef ONGPU
 			cudaTest();
 #endif			
+			SPHSimulation::planeChange=0;
 			this->getDataSlot.SetCallback(moldyn::MultiParticleDataCall::ClassName(), moldyn::MultiParticleDataCall::FunctionName(0), &SPHSimulation::getDataCallback);
 			this->getDataSlot.SetCallback(moldyn::MultiParticleDataCall::ClassName(), moldyn::MultiParticleDataCall::FunctionName(1), &SPHSimulation::getExtentCallback);
 			this->MakeSlotAvailable(&this->getDataSlot);
+			this->getTriDataSlot.SetCallback(trisoup::CallTriMeshData::ClassName(), trisoup::CallTriMeshData::FunctionName(0), &SPHSimulation::getTrigetData);
+			this->getTriDataSlot.SetCallback(trisoup::CallTriMeshData::ClassName(), trisoup::CallTriMeshData::FunctionName(1), &SPHSimulation::getTriExtentCallback);
+			this->MakeSlotAvailable(&this->getTriDataSlot);
+
+
+			float *vertices = new float[18];
+
+			vertices[0] = 0.0f; vertices[1] = 0.0f; vertices[2] = 0.0f;
+			vertices[3] = 0.0f; vertices[4] = 1.50f; vertices[5] = 0.0f;
+			vertices[6] = 0.0f; vertices[7] = 0.0f; vertices[8] = 1.0f;
+			vertices[9] = 0.0f; vertices[10] = 0.0f; vertices[11] = 0.0f;
+			vertices[12] = 0.0f; vertices[13] = -1.50f; vertices[14] = 0.0f;
+			vertices[15] = 0.0f; vertices[16] = 0.0f; vertices[17] = -1.0f;
+
+			meshClipPlane.SetVertexData<float*, float*, float*, float*>(6, vertices, NULL, NULL, NULL, true);
 
 		}
 
@@ -167,42 +184,43 @@ namespace megamol
 		// Global DATA Store for Evaluation Function
 		//--------------------------------------------------------------------------------------------------------------------------
 		long time=0;
-		float h=15*SPHSimulation::globalRadius;// kernel radius
+		float h=25*SPHSimulation::globalRadius;// kernel radius
 		float dt=0.0000001f;//time step
 		float vmax=300;//for dt update
 		float etaMax=600;//for dt update viscosity of the materail is represented by eta.
 		float alpha=1.5;//bulk viscosity
-		float epsilon=0.25f;//for velocity correction due to xsph value=[0,1]
-		float roh0=6.0;//reference density
+		float epsilon=0.5f;//for velocity correction due to xsph value=[0,1]
+		float roh0=8.0;//reference density -- the system will calculate pressure with this reference and if not set correctly it might greatly deform the system.
 		float c=1030;// speed of sound in the medium in m/sec
 		float n=0.5f;//refer equations in paper for eta
 		float jumpN=192.5f;//jump number
-		glm::vec3 velocity(0.00002,-0.0002,-0.00005);//initial velocity of each particle
+		glm::vec3 velocity(-10.0,-40,10.);//initial velocity of each particle
 		float commonMass=1;// common mass of each point in the material
 		float densityInit=100;//initial density vector initializied to this value.
 
 		std::vector<float> m;
-		std::vector<float> roh;
-		std::vector<float> proh;
-		std::vector<float> droh;
-		std::vector<glm::mat3> D;
-		std::vector<float> d;
-		std::vector<float>eta;
-		std::vector<glm::vec3> pos;
-		std::vector<glm::vec3> vel;
-		std::vector<glm::mat3> gradV;
-		std::vector<glm::vec3> acc;
-		std::vector<glm::vec3> pacc;
-		std::vector<glm::mat3> S;
-		std::vector<glm::vec3> gradS;
-		std::vector<float> P;
-		std::vector<glm::vec3> gradP;
-		std::vector<glm::vec3> gradW;
+		std::vector<float> roh;//stores density values for each particle
+		std::vector<float> proh;//stores density values for each particle in last timestep
+		std::vector<float> droh;//stores derrivative of density values for each particle
+		std::vector<glm::mat3> D;//velocity gradient vector
+		std::vector<float> d;//needed to calculate eta
+		std::vector<float>eta;//viscosity of each particle
+		std::vector<glm::vec3> pos;// position of each particle
+		std::vector<glm::vec3> vel;//velocity of each particle
+		std::vector<glm::mat3> gradV;//gradient of velocity for each particle
+		std::vector<glm::vec3> acc;// accleration of each particle
+		std::vector<glm::vec3> pacc;//accleration of each particle in last timestep
+		std::vector<glm::mat3> S;//
+		std::vector<glm::vec3> gradS;//
+		std::vector<float> P;//pressure at each particle
+		std::vector<glm::vec3> gradP;//gradient of pressure at each particle
+		std::vector<glm::vec3> gradW;//gradient of kernel for each of the neighbour of the particle
 		std::vector<glm::vec3> pie;
-		std::vector<float> W;
+		std::vector<float> W;//kernel value for each neighbour of the particle
 		glm::vec3 z(0.0f,0.0f,0.0f);
 		glm::mat3 zero(z,z,z);
 		float ze=0.0f;
+		btVector3 fallInertia(0,0,0);
 #ifdef ONGPU
 		GPUimplementation gpu;
 
@@ -245,12 +263,12 @@ namespace megamol
 					pos.push_back(z);
 #endif
 				}
-				float a1=-0.3;float b1=-.15;float c1=.5;
+				float a1=0.3;float b1=.15;float c1=0.;
 				int dc=0;
 #ifndef ONGPU
 				int side=5;
 #else
-				int side=45;
+				int side=5;
 #endif
 				while(dc<SPHSimulation::sphereCount){
 
@@ -268,16 +286,19 @@ namespace megamol
 							}
 							a1+=globalRadius*8.5f;
 						}
-						a1=-0.3;
+						a1=0.3;
 						b1+=globalRadius*6.5f;
 
-					}c1+=globalRadius*8.5f;b1=-.15;
+					}c1+=globalRadius*8.5f;b1=.15;
 
 				}
 #ifdef MODELFROMFILE
-			//	bool res_obj = loadOBJ("H:\\MEGAmol\\deformables\\trunk\\models\\bunny01.obj", pos);
+				//	bool res_obj = loadOBJ("H:\\MEGAmol\\deformables\\trunk\\models\\bunny01.obj", pos);
 				bool res_obj = loadOBJ("H:\\MEGAmol\\deformables\\trunk\\models\\sphere_lowres.obj", pos);
 #endif
+				btCollisionShape* fallShape = new btSphereShape(globalRadius);
+				fallShape->calculateLocalInertia(commonMass,fallInertia);
+
 		}
 		bool SPHSimulation::getDataCallback(Call& caller) {
 			moldyn::MultiParticleDataCall *mpdc = dynamic_cast<moldyn::MultiParticleDataCall *>(&caller);
@@ -340,7 +361,9 @@ namespace megamol
 			gpu.theBigLoop(m,roh,proh,droh,D,d,eta,pos,vel,gradV,acc,pacc,S,gradS,P,
 				gradP,gradW,pie,W, h,sphereCount,epsilon,c,roh0,alpha,jumpN,dt,etaMax);
 #endif
-			SPHSimulation::eventualCollision();
+#ifndef COLLISION
+			SPHSimulation::eventualCollision(pos,vel);
+#endif
 #ifdef DYNAMICTIME
 			SPHSimulation::updateDT(dt,vmax,etaMax,c,h);//see equaqtion 13
 #endif
@@ -369,6 +392,30 @@ namespace megamol
 			return true;
 		}
 
+
+		bool SPHSimulation::getTriExtentCallback(Call& caller) {
+
+			trisoup::CallTriMeshData *ctmd = dynamic_cast<trisoup::CallTriMeshData *>(&caller);
+			if (ctmd == NULL) return false;
+
+			ctmd->SetDataHash(1);
+			ctmd->SetExtent(SPHSimulation::frameCount,
+				-1.0f, -1.0f, -1.0f,
+				1.0f, 1.0f, 1.0f);
+			return true;
+		}
+		bool SPHSimulation::getTrigetData(Call& caller) {
+
+			trisoup::CallTriMeshData *ctmd = dynamic_cast<trisoup::CallTriMeshData *>(&caller);
+			if (ctmd == NULL) return false;
+
+
+			ctmd->SetDataHash(SPHSimulation::planeChange++);
+			ctmd->SetObjects(1, &meshClipPlane);
+			ctmd->SetUnlocker(NULL);
+
+			return true;
+		}
 		/*
 		* SPHSimulation::getExtentCallback
 		*/
@@ -576,7 +623,7 @@ namespace megamol
 		void SPHSimulation::updateAcc(std::vector<glm::vec3>&gradP,std::vector<glm::vec3> &gradS,
 			std::vector<glm::vec3>&pie,std::vector<glm::vec3> &acc,std::vector<glm::vec3> &pacc){
 
-				glm::vec3 gr(0.0f,0.00000005f,0.0f);
+				glm::vec3 gr(0.0f,-10.0f,0.0f);
 				for(int i=0;i<gradP.size();i++){
 
 					pacc[i]=acc[i];
@@ -618,12 +665,124 @@ namespace megamol
 						sum+=((2*m[nxi[j]])/(roh[i]+roh[nxi[j]]))*(vel[nxi[j]]-vel[i])*W[j];
 					}		
 
+
+
 					vel[i]=vel[i]+epsilon*sum;
 					pos[i]=pos[i]+vel[i]*dt;
+				
 				}
 		}
-		void SPHSimulation::eventualCollision(){}
 
+		//giving bullet phyiscs instructions what to do when a collision pair is detected
+		// using a callback function on near phase detections 
+
+		void myCdaCallback(btBroadphasePair& collisionPair,
+			btCollisionDispatcher& dispatcher, btDispatcherInfo& dispatchInfo){
+
+
+		}
+
+		//using the collision detection module of BUllet physics
+		void SPHSimulation::eventualCollision(std::vector<glm::vec3> &pos,std::vector<glm::vec3> &vel){
+
+
+			//keep track of the shapes, we release memory at exit.
+			//make sure to re-use collision shapes among rigid bodies whenever possible!
+
+			btVector3 *positions; 
+			positions=(btVector3*)malloc(sizeof(float)*sphereCount*4);
+
+			for (int i = 0; i < sphereCount; i++)
+			{
+				positions[i].setX((float)pos[i].x);
+				positions[i].setY((float)pos[i].y);
+				positions[i].setZ((float)pos[i].z);
+
+			}
+
+			btVector3 halfExt(1,1.51,1);
+			btCollisionShape* box=new btBoxShape (halfExt);
+			btCollisionShape* fallShape = new btSphereShape(globalRadius);
+
+
+
+			btDefaultCollisionConfiguration* collisionConfiguration = new btDefaultCollisionConfiguration();
+			btCollisionDispatcher* dispatcher = new btCollisionDispatcher(collisionConfiguration);
+			btVector3	worldAabbMin(-100,-100,-100);
+			btVector3	worldAabbMax(100,100,100);
+
+			btAxisSweep3*	broadphase = new btAxisSweep3(worldAabbMin,worldAabbMax);
+			int numObj=SPHSimulation::sphereCount+1;
+			btCollisionObject*	objects;
+
+			btSequentialImpulseConstraintSolver* solver = new btSequentialImpulseConstraintSolver;
+			btDiscreteDynamicsWorld* dynamicsWorld = new btDiscreteDynamicsWorld(dispatcher,broadphase,solver,collisionConfiguration);
+			dynamicsWorld->setGravity(btVector3(0,-10,0));
+
+			btCollisionShape* groundShape = new btStaticPlaneShape(btVector3(0,-1,0),0);
+
+			btDefaultMotionState* groundMotionState = new btDefaultMotionState(btTransform(btQuaternion(0,0,0,1),btVector3(0,-1,0)));
+			btRigidBody::btRigidBodyConstructionInfo groundRigidBodyCI(0,groundMotionState,groundShape,btVector3(0,0,0));
+			btRigidBody* groundRigidBody = new btRigidBody(groundRigidBodyCI);
+			dynamicsWorld->addRigidBody(groundRigidBody);
+
+			btDefaultMotionState* groundMotionState1 = new btDefaultMotionState(btTransform(btQuaternion(0,0,0,1),btVector3(0,-1,0)));
+			btRigidBody::btRigidBodyConstructionInfo groundRigidBodyCI1(0,groundMotionState1,groundShape,btVector3(0,0,0));
+			btRigidBody* groundRigidBody1 = new btRigidBody(groundRigidBodyCI1);
+			dynamicsWorld->addRigidBody(groundRigidBody1);
+
+			btDefaultMotionState* boxMotionState = new btDefaultMotionState(btTransform(btQuaternion(0,0,0,1),btVector3(0,0,-1)));
+			btRigidBody::btRigidBodyConstructionInfo boxRigidBodyCI(0,boxMotionState,box,btVector3(0,0,0));
+			btRigidBody* boxRigidBody = new btRigidBody(boxRigidBodyCI);
+			dynamicsWorld->addRigidBody(boxRigidBody);
+			
+			int bodiesBefore=3;
+
+			std::vector<btRigidBody*> fallRigidBody;
+			for (int i = 0; i < sphereCount; i++)
+			{
+				btRigidBody* frb;
+
+				btDefaultMotionState* fallMotionState =
+					new btDefaultMotionState(btTransform(btQuaternion(0,0,0,1),positions[i]));
+				btVector3 lv((float)vel[i].x,(float)vel[i].y,(float)vel[i].z);
+
+				btRigidBody::btRigidBodyConstructionInfo fallRigidBodyCI(commonMass,fallMotionState,fallShape,fallInertia);
+				frb=new btRigidBody(fallRigidBodyCI);
+				frb->setLinearVelocity(lv);
+				fallRigidBody.push_back(frb);
+				dynamicsWorld->addRigidBody(frb);
+
+			}
+
+			dynamicsWorld->stepSimulation(dt,2);
+
+
+			for (int i = 0; i < sphereCount; i++)
+			{
+				btCollisionObject* obj = dynamicsWorld->getCollisionObjectArray()[i+bodiesBefore];
+				btRigidBody* body = btRigidBody::upcast(obj);
+
+				btTransform trans;
+				fallRigidBody[i]->getMotionState()->getWorldTransform(trans);
+				//btVector3 vtmp;
+				btVector3 vtmp1;
+				//vtmp=fallRigidBody[i-1]->getLinearVelocity();
+				vtmp1=body->getLinearVelocity();
+				pos[i]=glm::vec3( trans.getOrigin().getX(), trans.getOrigin().getY(), trans.getOrigin().getZ());
+				vel[i]=glm::vec3(vtmp1.getX(),vtmp1.getY(),vtmp1.getZ());
+				btVector3 aa;
+			}
+			
+			delete fallShape;
+			delete dynamicsWorld;
+			delete solver;
+			delete collisionConfiguration;
+			delete dispatcher;
+			delete broadphase;
+			free(positions);
+
+		}
 		void SPHSimulation::updateDT(float &dt,float vmax,float etaMax,float c, float h){
 			//see equaqtion 13
 			float t1=h/(vmax+c);
@@ -632,9 +791,6 @@ namespace megamol
 				dt=0.1*t1;
 			else
 				dt=0.1*t2;
-			if(10*time%30==0){
-				std::cout<<"timestep is "<<dt<< std::endl;
-				std::cout<<"time is "<<time<< std::endl;}
 		}
 		void SPHSimulation::cudaTest(){
 #ifdef ONGPU
@@ -646,50 +802,51 @@ namespace megamol
 
 		}
 
-		bool SPHSimulation::loadOBJ(const char * path, std::vector<glm::vec3> & out_vertices){
-			printf("Loading OBJ file %s...\n", path);
+		bool SPHSimulation::loadOBJ(const char * path, 
+			std::vector<glm::vec3> & out_vertices){
 
-			std::vector<unsigned int> vertexIndices;
-			 
-			int count=0;
+				printf("Loading OBJ file %s...\n", path);
 
+				std::vector<unsigned int> vertexIndices;
 
-			FILE * file = fopen(path, "r");
-			if( file == NULL ){
-				printf("Impossible to open the file ! \n");
-				return false;
-			}
-			
-			while( 1 )
-			{
-
-				char lineHeader[128];
-				// read the first word of the line
-				int res = fscanf(file, "%s", lineHeader);
-				if (res == EOF)
-					break; // EOF = End Of File. Quit the loop.
-
-				// else : parse lineHeader
-
-				if ( strcmp( lineHeader, "v" ) == 0 ){
-					glm::vec3 vertex;
-
-					fscanf(file, "%f %f %f\n", &vertex.x, &vertex.y, &vertex.z );
-					out_vertices.push_back(vertex);
-					count++;
+				int count=0;
+				FILE * file = fopen(path, "r");
+				if( file == NULL ){
+					printf("Impossible to open the file ! \n");
+					return false;
 				}
-			else{
-				// Probably a comment, eat up the rest of the line
-				char stupidBuffer[1000];
-				fgets(stupidBuffer, 1000, file);
-			}
-			
-			SPHSimulation::sphereCount=count;
 
+				while( 1 )
+				{
+
+					char lineHeader[128];
+					// read the first word of the line
+					int res = fscanf(file, "%s", lineHeader);
+					if (res == EOF)
+						break; // EOF = End Of File. Quit the loop.
+
+					// else : parse lineHeader
+
+					if ( strcmp( lineHeader, "v" ) == 0 ){
+						glm::vec3 vertex;
+
+						fscanf(file, "%f %f %f\n", &vertex.x, &vertex.y, &vertex.z );
+						out_vertices.push_back(vertex);
+						count++;
+					}
+					else{
+						// Probably a comment, eat up the rest of the line
+						char stupidBuffer[1000];
+						fgets(stupidBuffer, 1000, file);
+					}
+
+					SPHSimulation::sphereCount=count;
+
+				}
+
+
+				return true;
 		}
 
-
-		return true;
 	}
-}
 }
