@@ -28,7 +28,7 @@ namespace megamol
 		*/
 		const unsigned int SPHSimulation::frameCount = 100;
 #ifdef ONGPU
-		const float SPHSimulation::globalRadius=.01;
+		const float SPHSimulation::globalRadius=.03;
 #else
 		const float SPHSimulation::globalRadius=.03;
 #endif
@@ -62,15 +62,26 @@ namespace megamol
 			this->MakeSlotAvailable(&this->getTriDataSlot);
 
 
-			float *vertices = new float[18];
+			vertices = new float[18];
 
+			vertices[0] = 0.0f; vertices[1] = 0.0f; vertices[2] = 0.0f;
+			vertices[3] = 0.0f; vertices[4] = 1.50f; vertices[5] = 0.0f;
+			vertices[6] = 0.0f; vertices[7] = 0.0f; vertices[8] = 0.30f;
+
+			vertices[9] = 0.0f; vertices[10] = 0.0f; vertices[11] = 0.0f;
+			vertices[12] = 0.0f; vertices[13] = -1.50f; vertices[14] = 0.0f;
+			vertices[15] = 0.0f; vertices[16] = 0.0f; vertices[17] = -0.30f;
+
+			//vertices[18] = 0.0f; vertices[19] = -1.0f; vertices[11] = 0.0f;
+			//vertices[21] = -1.0f; vertices[22] = 0.0f; vertices[23] = 0.0f;
+			//vertices[24] = 0.0f; vertices[25] = -1.0f; vertices[26] = 1.0f;
+			/* for a plane to collide with the set of spheres
 			vertices[0] = 0.0f; vertices[1] = 0.0f; vertices[2] = 0.0f;
 			vertices[3] = 0.0f; vertices[4] = 2.50f; vertices[5] = 0.0f;
 			vertices[6] = 0.0f; vertices[7] = 0.0f; vertices[8] = 02.50f;
 			vertices[9] = 0.0f; vertices[10] = 0.0f; vertices[11] = 0.0f;
 			vertices[12] = 0.0f; vertices[13] = -1.50f; vertices[14] = 0.0f;
-			vertices[15] = 0.0f; vertices[16] = 0.0f; vertices[17] = -02.50f;
-
+			vertices[15] = 0.0f; vertices[16] = 0.0f; vertices[17] = -02.50f;*/
 			for (int i = 0; i < 18; i+=3)
 			{
 				triList.push_back(glm::vec3 (vertices[i],vertices[i+1],vertices[i+2])); 
@@ -189,24 +200,27 @@ namespace megamol
 		// Global DATA Store for Evaluation Function
 		//--------------------------------------------------------------------------------------------------------------------------
 		long time=0;
-		float h=20*SPHSimulation::globalRadius;// kernel radius
+		float h=25*SPHSimulation::globalRadius;// kernel radius
 		float dt=0.0000001f;//time step
 		float vmax=150;//for dt update
 		float etaMax=1600;//for dt update viscosity of the materail is represented by eta.
 		float alpha=1.5;//bulk viscosity
-		float epsilon=0.30f;//for velocity correction due to xsph value=[0,1]
+		float epsilon=0.180f;//for velocity correction due to xsph value=[0,1]
 		float roh0=8.0;//reference density -- the system will calculate pressure with this reference and if not set correctly it might greatly deform the system.
 		float c=1030;// speed of sound in the medium in m/sec
 		float n=0.5f;//refer equations in paper for eta
 		float jumpN=12.5f;//jump number
-		glm::vec3 velocity(-150.0,-10,0.);//initial velocity of each particle
+		glm::vec3 velocity(-150.0,-10,40.);//initial velocity of each particle
 		float commonMass=1;// common mass of each point in the material
 		float densityInit=100;//initial density vector initializied to this value.
 
 
-		int numCut=0;
+		int numCut=1;
 		std::vector<glm::vec3> triList;
 		std::vector<sideofPlane> sc;
+		int flag_plane=0;
+		long fcount=0;
+
 		std::vector<float> m;
 		std::vector<float> roh;//stores density values for each particle
 		std::vector<float> proh;//stores density values for each particle in last timestep
@@ -308,6 +322,9 @@ namespace megamol
 				btCollisionShape* fallShape = new btSphereShape(globalRadius);
 				fallShape->calculateLocalInertia(commonMass,fallInertia);
 		}
+
+
+
 		bool SPHSimulation::getDataCallback(Call& caller) {
 			moldyn::MultiParticleDataCall *mpdc = dynamic_cast<moldyn::MultiParticleDataCall *>(&caller);
 			if (mpdc == NULL) return false;
@@ -376,8 +393,18 @@ namespace megamol
 			SPHSimulation::updateDT(dt,vmax,etaMax,c,h);//see equaqtion 13
 #endif
 			time+=dt;
-
-
+			fcount++;
+			if(flag_plane==0&&fcount>400)
+			{
+				flag_plane=1;
+				std::vector<glm::vec3> planePoints;
+				planePoints.push_back(glm::vec3(-.5,-.5,.5f));
+				planePoints.push_back(glm::vec3(-.5,.5,.5f));
+				planePoints.push_back(glm::vec3(.5,-.5,.5f));
+				planePoints.push_back(glm::vec3(.5,.5,.5f));
+				addCutPlane(pos,sc,planePoints);
+				std::cout<<"Time for cut"<<std::endl;
+			}
 
 			//--------------------------------------------------------------------------------------------------------------------------
 
@@ -416,8 +443,19 @@ namespace megamol
 
 			trisoup::CallTriMeshData *ctmd = dynamic_cast<trisoup::CallTriMeshData *>(&caller);
 			if (ctmd == NULL) return false;
-
-
+			//for (int i = 0; i < 18; i+=3)
+			//{
+			//	vertices[i]=glm::rotateX(glm::vec3 (vertices[i],vertices[i+1],vertices[i+2]),3.5f).x;
+			//	vertices[i+1]=glm::rotateX(glm::vec3 (vertices[i],vertices[i+1],vertices[i+2]),3.5f).y;
+			//	vertices[i+2]=glm::rotateX(glm::vec3 (vertices[i],vertices[i+1],vertices[i+2]),3.5f).z;
+			//}
+			//for (int i = 0; i < 18; i+=3)
+			//{
+			//	triList.push_back(glm::vec3 (vertices[i],vertices[i+1],vertices[i+2])); 
+			//}
+			//
+			//SPHSimulation::planeChange++;
+			//meshClipPlane.SetVertexData<float*, float*, float*, float*>(6, vertices, NULL, NULL, NULL, true);
 			ctmd->SetDataHash(SPHSimulation::planeChange++);
 			ctmd->SetObjects(1, &meshClipPlane);
 			ctmd->SetUnlocker(NULL);
@@ -501,6 +539,7 @@ namespace megamol
 			{
 				//a*x+b*y+c*z+d = 0;
 				sideofPlane pl;
+				pl.a=new int[10];
 				sc.push_back(pl);
 
 				if(glm::dot( glm::vec4(plane.a,plane.b,plane.c,plane.d), glm::vec4(pos[i].x,pos[i].y,pos[i].z,1) )>0 ){
@@ -510,6 +549,7 @@ namespace megamol
 					sc[i].a[numCut]=-numCut;
 				}
 			}
+			numCut++;
 
 		}
 		void SPHSimulation::findNeighbours(int index, std::vector<glm::vec3> &pos, 
@@ -523,7 +563,7 @@ namespace megamol
 
 							int flag=0;
 
-							for (int j = 0; j < numCut; j++)
+							for (int j = 1; j < numCut; j++)
 							{
 								if(sc[i].a[j]!=sc[index].a[j]){
 									flag=1;
@@ -632,7 +672,10 @@ namespace megamol
 			if(temp<etaMax)
 				eta[index]=temp;
 			else
+			{
+				etaMax=temp;
 				eta[index]=etaMax;
+			}
 			//eta[index]=(1-exp)*(std::pow(d11,n-1)+(1/d11));
 
 		}
@@ -1181,7 +1224,7 @@ namespace megamol
 						float an=glm::dot(V,vel[k])/(glm::length(V)*glm::length(vel[k]));
 						an=std::abs(an);
 						float sa=std::sqrt(1-(an*an));
-						vel[k]=(-5.35f*an*vel[k]+(sa)*vel[k]);
+						vel[k]=(-3.0f*an*vel[k]+(sa)*vel[k]);
 
 						break;
 					}
