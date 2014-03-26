@@ -52,6 +52,7 @@ namespace megamol
 			SPHSimulation::initData(m,roh,proh,droh,D,d,eta,pos,vel,gradV,acc,pacc,S,gradS,P,gradP,gradW,pie,W);
 #ifdef ONGPU
 			cudaTest();
+			gpu.MallocCudaptr(sphereCount);
 #endif			
 			SPHSimulation::planeChange=0;
 			this->getDataSlot.SetCallback(moldyn::MultiParticleDataCall::ClassName(), moldyn::MultiParticleDataCall::FunctionName(0), &SPHSimulation::getDataCallback);
@@ -66,7 +67,7 @@ namespace megamol
 
 			vertices[0] = 0.0f; vertices[1] = 0.0f; vertices[2] = 0.0f;
 			vertices[3] = 0.0f; vertices[4] = 1.50f; vertices[5] = 0.0f;
-			vertices[6] = 0.0f; vertices[7] = 0.0f; vertices[8] = 0.30f;
+			vertices[6] = 0.0f; vertices[7] = 0.0f; vertices[8] = 1.30f;
 
 			vertices[9] = 0.0f; vertices[10] = 0.0f; vertices[11] = 0.0f;
 			vertices[12] = 0.0f; vertices[13] = -1.50f; vertices[14] = 0.0f;
@@ -189,7 +190,10 @@ namespace megamol
 		* SPHSimulation::release
 		*/
 		void SPHSimulation::release(void) {
-			// intentionally empty
+#ifdef ONGPU
+
+			gpu.freeMem();
+#endif
 		}
 
 
@@ -200,17 +204,17 @@ namespace megamol
 		// Global DATA Store for Evaluation Function
 		//--------------------------------------------------------------------------------------------------------------------------
 		long time=0;
-		float h=25*SPHSimulation::globalRadius;// kernel radius
+		float h=20*SPHSimulation::globalRadius;// kernel radius
 		float dt=0.0000001f;//time step
 		float vmax=150;//for dt update
 		float etaMax=1600;//for dt update viscosity of the materail is represented by eta.
 		float alpha=1.5;//bulk viscosity
 		float epsilon=0.180f;//for velocity correction due to xsph value=[0,1]
-		float roh0=8.0;//reference density -- the system will calculate pressure with this reference and if not set correctly it might greatly deform the system.
+		float roh0=8.30;//reference density -- the system will calculate pressure with this reference and if not set correctly it might greatly deform the system.
 		float c=1030;// speed of sound in the medium in m/sec
 		float n=0.5f;//refer equations in paper for eta
-		float jumpN=12.5f;//jump number
-		glm::vec3 velocity(-150.0,-10,40.);//initial velocity of each particle
+		float jumpN=192.5f;//jump number
+		glm::vec3 velocity(-90.0,66,-210.);//initial velocity of each particle
 		float commonMass=1;// common mass of each point in the material
 		float densityInit=100;//initial density vector initializied to this value.
 
@@ -261,8 +265,26 @@ namespace megamol
 			std::vector<glm::vec3> &gradP,std::vector<glm::vec3> &gradW,
 			std::vector<glm::vec3> &pie,std::vector<float> &W){
 
-
-
+				
+#ifdef eg
+				h_m=(float*)malloc(sphereCount);
+				h_roh=(float*)malloc(sphereCount);
+				h_proh=(float*)malloc(sphereCount);
+				h_droh=(float*)malloc(sphereCount);
+				h_D=(glm::mat3*)malloc(sphereCount);
+				h_d=(float*)malloc(sphereCount);
+				h_eta=(float*)malloc(sphereCount);
+				h_pos=(glm::vec3*)malloc(sphereCount);
+				h_vel=(glm::vec3*)malloc(sphereCount);
+				h_gradV=(glm::mat3*)malloc(sphereCount);
+				h_acc=(glm::vec3*)malloc(sphereCount);
+				h_pacc=(glm::vec3*)malloc(sphereCount);
+				h_S=(glm::mat3*)malloc(sphereCount);
+				h_gradS=(glm::vec3*)malloc(sphereCount);
+				h_P=(float*)malloc(sphereCount);
+				h_gradP=(glm::vec3*)malloc(sphereCount);
+				h_pie=(glm::vec3*)malloc(sphereCount);
+#endif
 				for(int i = 0;i<SPHSimulation::sphereCount;i++){
 					m.push_back(commonMass);
 					roh.push_back(densityInit);
@@ -286,7 +308,7 @@ namespace megamol
 					pos.push_back(z);
 #endif
 				}
-				float a1=0.3;float b1=.15;float c1=0.;
+				float a1=0.3;float b1=-.15;float c1=0.;
 				int dc=0;
 #ifndef ONGPU
 				int side=5;
@@ -306,21 +328,43 @@ namespace megamol
 								pos[dc].y=b1;
 								pos[dc].z=c1;
 								dc++;
+#ifdef eg
+								h_pos[dc].x=a1;
+								h_pos[dc].y=b1;
+								h_pos[dc].z=c1;
+#endif
 							}
 							a1+=globalRadius*8.5f;
 						}
 						a1=0.3;
 						b1+=globalRadius*6.5f;
 
-					}c1+=globalRadius*8.5f;b1=.15;
-
+					}c1+=globalRadius*8.5f;b1=-.15;
+#ifdef eg
+					h_m[dc]=1.0f;
+					h_roh[dc]=densityInit;
+					h_proh[dc]=densityInit;
+					h_droh[dc]=densityInit;
+					h_D[dc]=zero;
+					h_d[dc]=ze;
+					h_eta[dc]=ze;
+					
+					h_vel[dc]=velocity;
+					h_gradV[dc]=zero;
+					h_acc[dc]=z;
+					h_pacc[dc]=z;
+					h_S[dc]=zero;
+					h_gradS[dc]=z;
+					h_P[dc]=ze;
+					h_gradP[dc]=z;
+					h_pie[dc]=z;
+#endif
 				}
 #ifdef MODELFROMFILE
 				//	bool res_obj = loadOBJ("H:\\MEGAmol\\deformables\\trunk\\models\\bunny01.obj", pos);
 				bool res_obj = loadOBJ("H:\\MEGAmol\\deformables\\trunk\\models\\sphere_lowres.obj", pos);
 #endif
-				btCollisionShape* fallShape = new btSphereShape(globalRadius);
-				fallShape->calculateLocalInertia(commonMass,fallInertia);
+
 		}
 
 
@@ -331,7 +375,8 @@ namespace megamol
 
 			view::AnimDataModule::Frame *f = this->requestLockedFrame(mpdc->FrameID());
 			if (f == NULL) return false;
-			f->Unlock(); // because I know that this data source is simple enough that no locking is required
+			f->Unlock(); 
+			// because I know that this data source is simple enough that no locking is required
 			Frame *frm = dynamic_cast<Frame*>(f);
 			if (frm == NULL) return false;
 
@@ -382,9 +427,14 @@ namespace megamol
 			SPHSimulation::correctV(vel,m,W,roh,pos);//see equaqtion 11
 #endif
 #ifdef ONGPU
-
+			std::cout<<"value of pos[110].z on CPU "<<pos[110].z<<std::endl;
+#ifndef eg			
 			gpu.theBigLoop(m,roh,proh,droh,D,d,eta,pos,vel,gradV,acc,pacc,S,gradS,P,
-				gradP,gradW,pie,W, h,sphereCount,epsilon,c,roh0,alpha,jumpN,dt,etaMax);
+			gradP,gradW,pie,W, h,sphereCount,epsilon,c,roh0,alpha,jumpN,dt,etaMax);
+#else
+			gpu.theBigLoop(h_m, h_roh, h_proh, h_droh, h_D,h_d,h_eta, h_pos, h_vel,  h_gradV,h_acc,  h_pacc, h_S,h_gradS,
+				h_P,  h_gradP,h_pie, h,sphereCount, epsilon,c, roh0,alpha, jumpN, dt, etaMax);
+#endif
 #endif
 #ifdef COLLISION
 			SPHSimulation::eventualCollision(pos,vel);
@@ -394,14 +444,14 @@ namespace megamol
 #endif
 			time+=dt;
 			fcount++;
-			if(flag_plane==0&&fcount>400)
+			if(flag_plane==0&&fcount>930)
 			{
 				flag_plane=1;
 				std::vector<glm::vec3> planePoints;
-				planePoints.push_back(glm::vec3(-.5,-.5,.5f));
-				planePoints.push_back(glm::vec3(-.5,.5,.5f));
-				planePoints.push_back(glm::vec3(.5,-.5,.5f));
-				planePoints.push_back(glm::vec3(.5,.5,.5f));
+				planePoints.push_back(glm::vec3(-.5,-.5,-.4f));
+				planePoints.push_back(glm::vec3(-.5,.5,-.4f));
+				planePoints.push_back(glm::vec3(.5,-.5,-.4f));
+				planePoints.push_back(glm::vec3(.5,.5,-.4f));
 				addCutPlane(pos,sc,planePoints);
 				std::cout<<"Time for cut"<<std::endl;
 			}
@@ -449,6 +499,7 @@ namespace megamol
 			//	vertices[i+1]=glm::rotateX(glm::vec3 (vertices[i],vertices[i+1],vertices[i+2]),3.5f).y;
 			//	vertices[i+2]=glm::rotateX(glm::vec3 (vertices[i],vertices[i+1],vertices[i+2]),3.5f).z;
 			//}
+			//triList.clear();
 			//for (int i = 0; i < 18; i+=3)
 			//{
 			//	triList.push_back(glm::vec3 (vertices[i],vertices[i+1],vertices[i+2])); 
@@ -628,7 +679,7 @@ namespace megamol
 		void SPHSimulation::updateDDE(std::vector<glm:: mat3> &D,std::vector<float> &droh,int index){
 
 
-			glm::mat3 D1= 0.5*D[index];
+			glm::mat3 D1= 0.5f*D[index];
 			droh[index] = D1[0][0]+D1[1][1]+D1[2][2];
 
 		}//see equaqtion 10
@@ -1205,10 +1256,10 @@ namespace megamol
 
 					glm::vec3 tp=pos[k];
 
-					bool currentPos=SPHSimulation::sphereIntersectionTriangle3D(T,tp,globalRadius);
+					bool currentPos=SPHSimulation::sphereIntersectionTriangle3D(T,tp,globalRadius*1.3);
 
 					glm::vec3 np=tp+vel[k]*dt;
-					bool nextPos=SPHSimulation::sphereIntersectionTriangle3D(T,np,globalRadius);
+					bool nextPos=SPHSimulation::sphereIntersectionTriangle3D(T,np,globalRadius*1.3);
 
 					Segment R;
 					R.P0=tp;
@@ -1224,7 +1275,7 @@ namespace megamol
 						float an=glm::dot(V,vel[k])/(glm::length(V)*glm::length(vel[k]));
 						an=std::abs(an);
 						float sa=std::sqrt(1-(an*an));
-						vel[k]=(-3.0f*an*vel[k]+(sa)*vel[k]);
+						vel[k]=(-2.50f*an*vel[k]+(sa)*vel[k]);
 
 						break;
 					}
