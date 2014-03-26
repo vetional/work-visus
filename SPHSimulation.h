@@ -20,6 +20,7 @@
 //#define MODELFROMFILE 1
 #define DYNAMICTIME 1
 #define COLLISION 1
+//#define eg 1
 
 //std includes
 #include "cmath"
@@ -32,6 +33,12 @@
 #include "btBulletDynamicsCommon.h"
 
 #include "CallTriMeshData.h"
+
+
+#ifdef ONGPU
+#define GLM_FORCE_CUDA
+#include "InitGPU.cuh"
+#else
 // Include GLM
 #include "glm-0.9.4.6\glm\glm\glm.hpp"
 #include "glm-0.9.4.6\glm/glm/gtc/matrix_transform.hpp"
@@ -40,9 +47,6 @@
 #include "glm-0.9.4.6\glm/glm/gtx/euler_angles.hpp"
 #include "glm-0.9.4.6\glm/glm/gtx/norm.hpp"
 #include "glm-0.9.4.6/glm/glm\gtc\type_ptr.hpp"
-
-#ifdef ONGPU
-#include "InitGPU.cuh"
 #endif
 
 //thrust includes
@@ -61,6 +65,34 @@ using namespace megamol::core;
 namespace megamol {
 	namespace deformables {
 
+
+		class sideofPlane{
+		public:
+			int* a;
+		};
+		class cutPlane{
+		public:
+			std::vector<glm::vec3> points;
+			float a;
+			float b;
+			float c;
+			float d;
+			glm::vec3 normal;
+		};
+		class Segment{
+		public:
+			glm::vec3 P0;
+			glm::vec3 P1;
+		};
+		class treeNode{
+		public:
+			treeNode *leftChild;
+			treeNode *rightChild;
+			glm::vec4 location;
+			std::vector <glm::vec4> points;
+			float radius;
+			int index;
+		};
 
 		/**
 		* Test data source module providing generated spheres data
@@ -100,8 +132,9 @@ namespace megamol {
 
 			/** Dtor. */
 			virtual ~SPHSimulation(void);
-
+			float *vertices;
 			long time;
+			std::vector<glm::vec3> triList;
 			static const float globalRadius;
 			std::vector<float> m;
 			std::vector<float> roh;
@@ -125,7 +158,31 @@ namespace megamol {
 			std::vector<glm::vec3> gradW;
 			std::vector<glm::vec3> pie;
 			std::vector<float> W;
+#ifdef eg
+			float* h_m;
+			float* h_roh;
+			float* h_proh;
+			float* h_droh;
+			glm::mat3* h_D;
+			float* h_d;
+			float*h_eta;
+			glm::vec3* h_pos;
+			glm::vec3 * h_vel;
+			glm::mat3 * h_gradV;
+			glm::vec3 * h_acc;
+			glm::vec3 * h_pacc;
+			glm::mat3 * h_S;
+			glm::vec3 * h_gradS;
+			float * h_P;
+			glm::vec3 * h_gradP;
+			glm::vec3 * h_pie;
+#endif
+#ifdef ONGPU
+			GPUimplementation gpu;
+
+#endif
 			bool SPHSimulation::loadOBJ(const char * path, std::vector<glm::vec3> & out_vertices);
+
 			void SPHSimulation::initData(std::vector<float> &m,std::vector<float> &roh,std::vector<float> &proh,
 				std::vector<float> &droh,std::vector<glm::mat3> &D,std::vector<float> &d,
 				std::vector<float>&eta,std::vector<glm::vec3> &pos,std::vector<glm::vec3> &vel,
@@ -194,13 +251,38 @@ namespace megamol {
 				std::vector<float> &W,std::vector<float> &roh,
 				std::vector<glm::vec3> &pos);//see equation 11		
 
-			void myCdaCallback(btBroadphasePair& collisionPair,
+			/*void myCdaCallback(btBroadphasePair& collisionPair,
 			btCollisionDispatcher& dispatcher, btDispatcherInfo& dispatchInfo);
-			
+			*/
 			void SPHSimulation::eventualCollision(std::vector<glm::vec3> &pos,std::vector<glm::vec3> &vel);
 
+
 			void SPHSimulation::updateDT(float &dt,float vmax,float etaMax,float c, float h);//see equaqtion 13
+
 			void SPHSimulation::cudaTest();
+
+			void SPHSimulation::computePlane(cutPlane &pl);
+
+			void SPHSimulation::addCutPlane(std::vector<glm::vec3> &pos,std::vector<sideofPlane> &sc,
+				std::vector<glm::vec3> &pt);
+
+			bool SPHSimulation::intersect3D_RayTriangle( Segment &R, glm::vec3* T);
+
+			bool SPHSimulation::sphereIntersectionTriangle3D(glm::vec3* T,glm::vec3 P,
+				float radius);
+
+			void SPHSimulation::broadPhase(treeNode* node, std::vector<treeNode*> &broadlist,
+				std::vector<glm::vec3> triList);
+
+			struct treeNode* SPHSimulation::computeKdTree(std::vector<glm::vec4> &points,
+				treeNode *node,int depth);
+
+			void SPHSimulation::sortPointList(std::vector <glm::vec4> &points, int axis);
+
+			struct treeNode* SPHSimulation::NewNode();
+
+			float SPHSimulation::boundingRadius(glm::vec4 median,std::vector <glm::vec4> &points);
+
 			bool SPHSimulation::getTriExtentCallback(Call& caller) ;
 			bool SPHSimulation::getTrigetData(Call& caller) ;
 			long planeChange;
@@ -302,7 +384,7 @@ namespace megamol {
 
 			/** The slot for requesting data */
 			CalleeSlot getDataSlot;
-			
+
 			/** The slot for requesting data */
 			CalleeSlot getTriDataSlot;
 
