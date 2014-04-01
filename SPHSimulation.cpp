@@ -9,10 +9,6 @@
 #define _USE_MATH_DEFINES
 
 #include "SPHSimulation.h"
-#include "moldyn/MultiParticleDataCall.h"
-#include "vislib/Vector.h"
-#include "vislib/ShallowVector.h"
-#include "vislib/Quaternion.h"
 
 
 using namespace megamol;
@@ -203,20 +199,22 @@ namespace megamol
 		//--------------------------------------------------------------------------------------------------------------------------
 		// Global DATA Store for Evaluation Function
 		//--------------------------------------------------------------------------------------------------------------------------
-		long time=0;
-		float h=20*SPHSimulation::globalRadius;// kernel radius
-		float dt=0.0000001f;//time step
-		float vmax=150;//for dt update
-		float etaMax=1600;//for dt update viscosity of the materail is represented by eta.
-		float alpha=1.5;//bulk viscosity
-		float epsilon=0.180f;//for velocity correction due to xsph value=[0,1]
-		float roh0=8.30;//reference density -- the system will calculate pressure with this reference and if not set correctly it might greatly deform the system.
-		float c=1030;// speed of sound in the medium in m/sec
-		float n=0.5f;//refer equations in paper for eta
-		float jumpN=192.5f;//jump number
-		glm::vec3 velocity(-90.0,66,-210.);//initial velocity of each particle
-		float commonMass=1;// common mass of each point in the material
-		float densityInit=100;//initial density vector initializied to this value.
+		
+		
+		//long time=0;
+		//float h=20*SPHSimulation::globalRadius;// kernel radius
+		//float dt=0.0000001f;//time step
+		//float vmax=150;//for dt update
+		//float etaMax=1600;//for dt update viscosity of the materail is represented by eta.
+		//float alpha=1.5;//bulk viscosity
+		//float epsilon=0.180f;//for velocity correction due to xsph value=[0,1]
+		//float roh0=8.30;//reference density -- the system will calculate pressure with this reference and if not set correctly it might greatly deform the system.
+		//float c=1030;// speed of sound in the medium in m/sec
+		//float n=0.5f;//refer equations in paper for eta
+		//float jumpN=192.5f;//jump number
+		//glm::vec3 velocity(-90.0,66,-210.);//initial velocity of each particle
+		//float commonMass=1;// common mass of each point in the material
+		//float densityInit=100;//initial density vector initializied to this value.
 
 
 		int numCut=1;
@@ -224,7 +222,7 @@ namespace megamol
 		std::vector<sideofPlane> sc;
 		int flag_plane=0;
 		long fcount=0;
-
+		
 		std::vector<float> m;
 		std::vector<float> roh;//stores density values for each particle
 		std::vector<float> proh;//stores density values for each particle in last timestep
@@ -264,6 +262,21 @@ namespace megamol
 			std::vector<glm::vec3> &gradS,std::vector<float> &P,
 			std::vector<glm::vec3> &gradP,std::vector<glm::vec3> &gradW,
 			std::vector<glm::vec3> &pie,std::vector<float> &W){
+
+				this->time=0;
+		this->h=20*SPHSimulation::globalRadius;// kernel radius
+		this->dt=0.0000001f;//time step
+		this->vmax=150;//for dt update
+		this->etaMax=1600;//for dt update viscosity of the materail is represented by eta.
+		this->alpha=1.5;//bulk viscosity
+		this->epsilon=0.180f;//for velocity correction due to xsph value=[0,1]
+		this->roh0=8.30;//reference density -- the system will calculate pressure with this reference and if not set correctly it might greatly deform the system.
+		this->c=1030;// speed of sound in the medium in m/sec
+		this->n=0.5f;//refer equations in paper for eta
+		this->jumpN=192.5f;//jump number
+		this->velocity=glm::vec3(-90.0,66,-210.);//initial velocity of each particle
+		this-> commonMass=1;// common mass of each point in the material
+		this->densityInit=100;//initial density vector initializied to this value.
 
 				
 #ifdef eg
