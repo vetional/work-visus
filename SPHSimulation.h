@@ -27,6 +27,11 @@
 #include "iostream"
 #include "vector"
 #include <math.h> 
+#include "moldyn/MultiParticleDataCall.h"
+#include "vislib/Vector.h"
+#include "vislib/Matrix.h"
+#include "vislib/ShallowVector.h"
+#include "vislib/Quaternion.h"
 
 //using bullet physics for collision detection 
 #include"btBulletCollisionCommon.h"
@@ -38,17 +43,6 @@
 #ifdef ONGPU
 #define GLM_FORCE_CUDA
 #include "InitGPU.cuh"
-#else
-// Include GLM
-#include "glm-0.9.4.6\glm\glm\glm.hpp"
-#include "glm-0.9.4.6\glm/glm/gtc/matrix_transform.hpp"
-#include "glm-0.9.4.6\glm/glm/gtc/quaternion.hpp"
-#include "glm-0.9.4.6\glm/glm/gtx/quaternion.hpp"
-#include "glm-0.9.4.6\glm/glm/gtx/euler_angles.hpp"
-#include "glm-0.9.4.6\glm/glm/gtx/norm.hpp"
-#include "glm-0.9.4.6/glm/glm\gtc\type_ptr.hpp"
-#endif
-
 //thrust includes
 #include <thrust/host_vector.h>
 #include <thrust/sort.h>
@@ -56,6 +50,17 @@
 #include <thrust/device_vector.h>
 #include <thrust/copy.h>
 #include <thrust/version.h>
+#else
+// Include GLM
+#include "glm-0.9.4.6\glm\glm\glm.hpp"
+//#include "glm-0.9.4.6\glm/glm/gtc/matrix_transform.hpp"
+//#include "glm-0.9.4.6\glm/glm/gtc/quaternion.hpp"
+//#include "glm-0.9.4.6\glm/glm/gtx/quaternion.hpp"
+//#include "glm-0.9.4.6\glm/glm/gtx/euler_angles.hpp"
+//#include "glm-0.9.4.6\glm/glm/gtx/norm.hpp"
+//#include "glm-0.9.4.6/glm/glm\gtc\type_ptr.hpp"
+#endif
+
 
 //#include "constants.h"
 
@@ -158,6 +163,21 @@ namespace megamol {
 			std::vector<glm::vec3> gradW;
 			std::vector<glm::vec3> pie;
 			std::vector<float> W;
+
+			//constants get set
+			float h;// kernel radius
+			float dt;//time step
+			float vmax;//for dt update
+			float etaMax;//for dt update viscosity of the materail is represented by eta.
+			float alpha;
+			float epsilon;
+			float roh0;
+			float c;
+			float n;
+			float jumpN;
+			glm::vec3 velocity;
+			float commonMass;
+			float densityInit;
 #ifdef eg
 			float* h_m;
 			float* h_roh;
@@ -183,6 +203,98 @@ namespace megamol {
 #endif
 			bool SPHSimulation::loadOBJ(const char * path, std::vector<glm::vec3> & out_vertices);
 
+			float SPHSimulation::get_h(){
+				return this->h;
+			}
+			void SPHSimulation::set_h(float h){
+				this->h=h;
+				return;
+			}
+			float SPHSimulation::get_dt(){
+				return this->dt;
+			}
+			void SPHSimulation::set_dt(float dt){
+				this->dt=dt;
+				return;
+			}
+			float SPHSimulation::get_vmax(){
+				return this->vmax;
+			}
+			void SPHSimulation::set_vmax(float vmax){
+				this->vmax=vmax;
+				return;
+			}
+			float SPHSimulation::get_etamax(){
+				return this->etaMax;
+			}
+			void SPHSimulation::set_etamax(float etamax){
+				this->etaMax=etamax;
+				return;
+			}
+			float SPHSimulation::get_alpha(){
+				return this->alpha;
+			}
+			void SPHSimulation::set_alpha(float alpha){
+				this->alpha=alpha;
+				return;
+			}
+			float SPHSimulation::get_epsilon(){
+				return this->epsilon;
+			}
+			void SPHSimulation::set_epsilon(float epsilon){
+				this->epsilon=epsilon;
+				return;
+			}
+			float SPHSimulation::get_c(){
+				return this->c;
+			}
+			void SPHSimulation::set_c(float c){
+				this->c=c;
+				return;
+			}
+			float SPHSimulation::get_n(){
+				return this->n;
+			}
+			void SPHSimulation::set_n(float n){
+				this->n=n;
+				return;
+			}
+			float SPHSimulation::get_roh0(){
+				return this->roh0;
+			}
+			void SPHSimulation::set_roh0(float roh0){
+				this->roh0=roh0;
+				return;
+			}
+			float SPHSimulation::get_jumpN(){
+				return this->jumpN;
+			}
+			void SPHSimulation::set_jumpN(float jumpN){
+				this->jumpN=jumpN;
+				return;
+			}
+
+			float SPHSimulation::get_commonMass(){
+				return this->commonMass;
+			}
+			void SPHSimulation::set_commonMass(float commonMass){
+				this->commonMass=commonMass;
+				return;
+			}
+			float SPHSimulation::get_densityInit(){
+				return this->densityInit;
+			}
+			void SPHSimulation::set_densityInit(float densityInit){
+				this->densityInit=densityInit;
+				return;
+			}
+			glm::vec3 SPHSimulation::get_velocity(){
+				return this->velocity;
+			}
+			void SPHSimulation::set_velocity(glm::vec3 velocity){
+				this->velocity=velocity;
+				return;
+			}
 			void SPHSimulation::initData(std::vector<float> &m,std::vector<float> &roh,std::vector<float> &proh,
 				std::vector<float> &droh,std::vector<glm::mat3> &D,std::vector<float> &d,
 				std::vector<float>&eta,std::vector<glm::vec3> &pos,std::vector<glm::vec3> &vel,
